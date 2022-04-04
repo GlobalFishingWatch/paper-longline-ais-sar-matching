@@ -46,10 +46,10 @@ orange = "#f68d4b"
 gold = "#f8ba47"
 green = "#ebe55d"
 
+import ais_sar_matching.sar_analysis as sarm
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
+# %load_ext autoreload
+# %autoreload 2
 
 # +
 q = """with
@@ -88,7 +88,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_scores, speed1, speed2, delta_mi
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 # -
 
 df.head()
@@ -177,7 +177,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_scores, speed1, speed2, delta_mi
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 
 # +
 
@@ -203,8 +203,8 @@ plt.title(
 (although something weird is happening at 6 knots))"
 )
 
-paper_fig.savefig("scores_analysis.png", dpi=300, bbox_inches="tight")
-
+# +
+# paper_fig.savefig('scores_analysis.png', dpi=300, bbox_inches='tight')
 
 # +
 q = """with gear_in_scene as
@@ -236,7 +236,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_scores
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 # -
 
 df.head()
@@ -276,7 +276,7 @@ left join max_scores
 using(ssvid, scene_id)
 order by max_scores desc"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 # -
 
 df = df.dropna()
@@ -358,7 +358,7 @@ left join max_scores
 using(ssvid, scene_id)
 order by max_scores desc"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 
 # +
 

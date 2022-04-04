@@ -67,9 +67,12 @@ dark_vessel_color = "#545454"
 # %load_ext autoreload
 # %autoreload 2
 
+import ais_sar_matching.sar_analysis as sarm
+from ais_sar_matching.sar_analysis import (AISPriorCouplingFunction,
+                                           BinCouplingFunctionLarge, LComputer)
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
+# %load_ext autoreload
+# %autoreload 2
 
 
 # Important! This is the threshold that we accpet matches
@@ -77,8 +80,6 @@ def gbq(q):
 # of these two values, and in theory we should also test
 # how much the model changes based on changing this value
 matching_threshold = 2.5e-5
-
-
 # -
 
 # # Get all detections and non-gear ssvid
@@ -116,34 +117,6 @@ matching_threshold = 2.5e-5
 # - df[df.score > matching_threshold]
 
 # +
-## Helper Functions for quantile regression and getting results
-
-
-def fit_line(x, y, q=0.5):
-    """Fit line to specified quantile."""
-    model = smf.quantreg("y ~ x", {"x": x, "y": y})
-    fit = model.fit(q=q)
-    return [
-        q,
-        fit.params["Intercept"],
-        fit.params["x"],
-    ] + fit.conf_int().loc["x"].tolist()
-
-
-def get_y(a, b, x):
-    return a + b * x
-
-
-def get_x(a, b, y):
-    # The inverse function x(y) to be used in the prob
-    return (y - a) / b
-
-
-# NOTE: Because the above is an inverse function, it will
-# return negative values for very small lenghts (<20m),
-# so below these lenghts the model is invalid.
-
-# +
 
 q = """
 SELECT
@@ -165,7 +138,7 @@ WHERE
   OR detect_id IS not NULL
 """
 
-df = pd.read_gbq(q, project_id="world-fishing-827")
+df = sarm.gbq(q)
 # -
 
 # save here to access offline
@@ -202,20 +175,7 @@ df_r = df[
 # `detect_t` for vessels under 60 meters is later used to fit a line for vessels under this size.
 
 # +
-def get_df_grouped(df_r, matching_threshold):
-    df_r.loc[:, "detected_t"] = df_r.score.apply(
-        lambda x: 1 if x > matching_threshold else 0
-    )
-    df_r.loc[:, "detected"] = df_r.score.apply(
-        lambda x: True if x > matching_threshold else False
-    )
-    # So, this treats each vessel seperately.
-    # If the vessel appears in several scenes
-    df_grouped = df_r.groupby("ssvid").mean()
-    return df_grouped
-
-
-df_grouped = get_df_grouped(df_r, matching_threshold)
+df_grouped = sarm.get_df_grouped(df_r, matching_threshold)
 
 max_size = 60
 # Length greater/smaller than 60 meteres
@@ -236,223 +196,12 @@ print(f"total vessels <{max_size}m:     {len(df_small)}")
 #
 # Calculate the average detection rate for all vessels between 10-20 meters, then between 15-25 meters, and so on (10m wide, step by 5m). This is not used for analysis, but rather to compare with the quantile regression.
 
-# +
-
-
-def bin_data(df, width=16, bins=50, median=False):
-    """calculates the average detected_t, binned at width meters, moving
-    by half window"""
-    x_bin5, y_bin5 = [], []
-    y_bin5std, x_bin5std = [], []
-    half = width / 2
-    for i in range(bins):
-        cond = (df.gfw_length >= i * half) & (df.gfw_length < i * half + width)
-        d = df[cond]
-        if len(d) == 0:
-            continue
-        if median:
-            y_bin5.append(d.detected_t.median())
-        else:
-            y_bin5.append(d.detected_t.mean())
-        y_bin5std.append(d.detected_t.std() / np.sqrt(len(d)))
-        x_bin5.append(d.gfw_length.mean())
-        x_bin5std.append(d.gfw_length.std())
-    return np.array(x_bin5), np.array(y_bin5), np.array(x_bin5std), np.array(y_bin5std)
-
-
 # get averaged values every 10 vessels
 # this is used to plot the average detection rate.
-x_bin5, y_bin5, x_bin5std, y_bin5std = bin_data(df_r, width=10, median=False)
-# -
-
-
+x_bin5, y_bin5, x_bin5std, y_bin5std = sarm.bin_data(df_r, width=10, median=False)
 # # Minimization Approach
 
-# ## Compute the Detection Probility Vector
-
-# +
-def compute_bins(lmin, lmax, n):
-    return np.linspace(lmin, lmax, n + 1, endpoint=True)
-
-
-def compute_lengths(bins):
-    return 0.5 * (bins[1:] + bins[:-1])
-
-
-def compute_d(lengths, min_p=0.01, max_p=1.0, df_small=df_small):
-    x = df_small.gfw_length.values
-    y = df_small.detected_t.values
-    q, a, b, lb, ub = fit_line(x, y, 0.5)
-    return np.clip(get_y(a, b, lengths), min_p, max_p)
-
-
-# -
-
 # ## Compute the Matrix relating GFW to SAR Lengths
-
-# +
-class LComputer:
-    """Computes a matrix relating AIS reported lengths to measured lengths
-
-    We compute a matrix `L` that approximates the probability of measuring some
-    length using SAR given the actual, AIS reported length. That is:
-
-        s = L @ a
-
-    Where `a` is a vector of the actual number of vessels at each lengths and
-    `s` is the expected number of vessels at each length *as measured by SAR*.
-
-    Primary entry points are `__call__`, which computes the `L` matrix and
-    `plot_fits` which plots some example fits to show how well the approximation
-    is performing.
-
-    Parameters
-    ----------
-    sar_length, gfw_length : 1D np.array of float
-        Matched pairs of GFW (true) and SAR (measured) lengths
-    """
-
-    lookup_table_size = 300
-    shape_range = (0.05, 1)
-    scale_range = (10, 500)
-    quantiles = [0.333, 0.667]
-
-    def __init__(self, gfw_length, sar_length):
-        self.gfw_length = gfw_length
-        self.sar_length = sar_length
-        self._fit_quantiles()
-        self.lookup_table = self._create_lookup_table()
-
-    def _fit_quantiles(self):
-        # Fit lines to `self.quantiles` using quantile
-        # regression. The resulting fits are stored in self._models.
-        mdls = [fit_line(self.gfw_length, self.sar_length, q) for q in self.quantiles]
-        self._models = pd.DataFrame(mdls, columns=["q", "a", "b", "lb", "ub"])
-
-    def _create_lookup_table(self):
-        # We need to be able to efficiently find shape and scale values
-        # for a lognormal distribution based on a set of quantile values.
-        # We create a lookup table relating quantiles to shape and scale,
-        # in order to do this quickly later.
-        m = self.lookup_table_size
-        M = np.empty([m, m, len(self.quantiles)])
-        M.fill(np.nan)
-        self._shape_vals = np.linspace(*self.shape_range, num=m, endpoint=True)
-        self._scale_vals = np.linspace(*self.scale_range, num=m, endpoint=True)
-        for i, shape in enumerate(self._shape_vals):
-            for j, scale in enumerate(self._scale_vals):
-                M[i, j] = self._compute_quantiles(shape, scale)
-        return M
-
-    def _compute_quantiles(self, shape, scale):
-        # https://en.wikipedia.org/wiki/Log-normal_distribution
-        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.lognorm.html
-        sigma = shape
-        mu = np.log(scale)
-        return [
-            np.exp(mu + np.sqrt(2 * sigma ** 2) * erfinv(2 * p - 1))
-            for p in self.quantiles
-        ]
-
-    def __call__(self, bin_edges, normalize=False):
-        """Compute the `L` matrix relating measured SAR to actual lengths
-
-        Parameters
-        ----------
-        bin_edges : sequence of float
-            Designates the edges of the length bins to compute `L` for.
-            If there are `n + 1` values in bin_edges, then there will
-            be `n` bins.
-        normalize : bool, optional
-            If True, ensure that `L` is normalized over SAR lengths at each
-            AIS length.
-
-        """
-        n = len(bin_edges) - 1
-        L = np.zeros([n, n])
-        for i, l in enumerate(compute_lengths(bin_edges)):
-            cdf = self._dist_at(l).cdf(bin_edges)
-            L[:, i] = cdf[1:] - cdf[:-1]
-        if normalize:
-            L /= L.sum(axis=0, keepdims=True)
-        return L
-
-    def _dist_at(self, l):
-        # Return the CDF at length `l`
-        qvals = [
-            get_y(self._models.a[i], self._models.b[i], l)
-            for (i, _) in enumerate(self.quantiles)
-        ]
-        shape, scale = self._lookup_quantiles(qvals)
-        return lognorm(shape, loc=0, scale=scale)
-
-    def _lookup_quantiles(self, qvals):
-        # Lookup shape and scale values based on quantile values.
-        m = self.lookup_table_size
-        # `delta` is an m X m X 2 table, where the first two dimension
-        # are indexed by shape and scale (see below) and the last gives
-        # the difference with the tercies we are trying to find.
-        delta = self.lookup_table - [[qvals]]
-        # We find the minimum value of `eps`, the square error.
-        # `eps` = delta_q333 ** 2 + delta_q667 ** 2
-        eps = (delta ** 2).sum(axis=2)
-        # This is a numpy trick to find the row and column of the minimum
-        # value in an array.
-        flat_ndx = np.argmin(eps)
-        i, j = flat_ndx // m, flat_ndx % m
-        # The row and column in the lookup table (and thus `delta`)
-        # correspond to our stored shape and scale value, so look
-        # those up and return them.
-        return self._shape_vals[i], self._scale_vals[j]
-
-    def plot_fits(self):
-        """Plot some example plots for evaluating the fit of `L`"""
-        for low, high, cntr, mask in self._get_ranges():
-            y_dist = (self.sar_length - self.gfw_length)[mask] + cntr
-            dist = self._dist_at(cntr)
-
-            _ = plt.hist(y_dist, bins=20, density=True)
-            plt.xlim(0)
-            l = np.arange(1, 300)
-            plt.plot(l, dist.pdf(l))
-            plt.title(f"GFW Length: {low}m-{high}m")
-            plt.ylabel("density")
-            plt.xlabel("SAR length")
-            plt.show()
-
-    def _get_ranges(self):
-        # Return appropriate ranges for plotting some fits over.
-        for low in range(20, 300, 20):
-            high = low + 20
-            mask = (self.gfw_length > low) & (self.gfw_length < high)
-            if mask.sum() < 20:
-                continue
-            cntr = (low + high) / 2
-            yield low, high, cntr, mask
-
-
-class LComputerQuartiles(LComputer):
-    """Compute 'L' based on a best fit of quartiles"""
-
-    quantiles = [0.25, 0.50, 0.75]
-
-
-class LComputerIQD(LComputerQuartiles):
-    """Compute 'L' based on a best fit of median and IQD"""
-
-    def _create_lookup_table(self):
-        M = super()._create_lookup_table()
-        # Convert quartiles to median and inter-quartile distance
-        median = M[:, :, 1]
-        IQD = M[:, :, 2] - M[:, :, 0]
-        return np.concatenate([median[:, :, np.newaxis], IQD[:, :, np.newaxis]], axis=2)
-
-    def _lookup_quantiles(self, qvals):
-        # Convert quartiles to median and inter-quartile distance
-        median = qvals[1]
-        IQD = qvals[2] - qvals[0]
-        return super()._lookup_quantiles([median, IQD])
-
 
 compute_L = LComputer(df_m.gfw_length.values, df_m.sar_length.values)
 compute_L.plot_fits()
@@ -460,76 +209,25 @@ compute_L.plot_fits()
 # compute_L.plot_fits()
 # compute_L = LComputerIQD(df_m.gfw_length.values, df_m.sar_length.values)
 # compute_L.plot_fits()
-# -
 
-# ## Wrapper Around Optimizer
-
-# +
-def compute_o(df, lengths, region="none"):
-    valid = df[~df.sar_length.isnull()]
-    if region == "none":
-        sar_lengths = valid.sar_length
-    else:
-        sar_lengths = valid.sar_length[valid.region == region]
-    indices = np.clip(np.searchsorted(lengths, sar_lengths), 0, n_bins - 1)
-    o = np.zeros(n_bins)
-    for i in indices:
-        o[i] += 1
-    return o
-
-
-def infer_vessels(o, d, L, cf, maxfun=1e6):
-    def objective(x):
-        """Combined Kolmogorov–Smirnov and squared error of total counts
-
-        Note that unlike some earlier objectives, this uses the classic
-        KS error operating on distributions. This results on the two
-        components of the objective being indepent, with KS error
-        controlling the shape and the squared error controlling the
-        amplitude.
-        """
-        e = L @ (d * cf(x))
-        T_e = e.sum()
-        T_o = o.sum()
-        # Compute
-        D_e = e / T_e
-        D_o = o / T_o
-        KS = abs(np.cumsum(D_e) - np.cumsum(D_o)).max()
-        SE = (T_e - T_o) ** 2
-        return KS + SE
-
-    guess = cf.guess(o)
-    constraint = scipy.optimize.LinearConstraint(
-        np.identity(len(guess)), cf.lower_bounds, cf.upper_bounds
-    )
-
-    return scipy.optimize.minimize(
-        objective,
-        guess,
-        constraints=[constraint],
-        options=dict(maxfun=maxfun, maxiter=1000),
-    )
-
-
-# -
 # ##### Infer Lengths
 
 # +
 
 lmin, lmax = 0, 400
 n_bins = 400
-bins = compute_bins(lmin, lmax, n_bins)
-lengths = compute_lengths(bins)
+bins = sarm.compute_bins(lmin, lmax, n_bins)
+lengths = sarm.compute_lengths(bins)
 compute_L = LComputer(df_m.gfw_length.values, df_m.sar_length.values)
 L = compute_L(bins)
 
 ## Caculate d, the detection rate
-df_grouped = get_df_grouped(df_r, matching_threshold)
+df_grouped = sarm.get_df_grouped(df_r, matching_threshold)
 df_small = df_grouped[df_grouped.gfw_length < max_size]
 df_large = df_grouped[df_grouped.gfw_length > max_size]
 max_detect_rate = df_large.detected_t.sum() / len(df_large)
 
-d = compute_d(lengths, max_p=max_detect_rate, df_small=df_small)
+d = sarm.compute_d(lengths, max_p=max_detect_rate, df_small=df_small)
 # max_detect_rate was calculated as detection rate of vessels > 60m
 
 
@@ -539,84 +237,6 @@ assert n_bins % model_bin_size == 0
 C = np.zeros([n_bins, n_bins // model_bin_size])
 for i in range(n_bins):
     C[i, i // model_bin_size] = 1.0 / model_bin_size
-
-
-class BinCouplingFunction:
-    def __init__(self, n_bins, rel_bin_size, l_min, l_max):
-        assert n_bins % rel_bin_size == 0
-        self.out_bins = compute_bins(l_min, l_max, n_bins)
-        self.lower_bounds = np.zeros(n_bins // rel_bin_size)
-        self.upper_bounds = np.empty(n_bins // rel_bin_size)
-        self.upper_bounds.fill(np.inf)
-        #         self.upper_bounds[0:4] = np.zeros(4)
-        self.n_bins = n_bins
-        self.rel_bin_size = rel_bin_size
-        self.C = self._compute_C(n_bins, rel_bin_size)
-
-    def _compute_C(self, n_bins, rel_bin_size):
-        C = np.zeros([n_bins, n_bins // rel_bin_size])
-        for i in range(n_bins):
-            C[i, i // rel_bin_size] = 1.0 / rel_bin_size
-        return C
-
-    def __call__(self, x):
-        return self.C @ x
-
-    def guess(self, x):
-        return self.C.T @ x
-
-
-# TODO: note there some assumptions here that base bin size is always 1 m
-class BinCouplingFunctionLarge:
-    def __init__(self, n_bins, rel_bin_size, l_min, l_max, min_vessel_sz=20):
-        assert n_bins % rel_bin_size == 0
-        self.out_bins = compute_bins(l_min, l_max, n_bins)
-        self.lower_bounds = np.zeros(n_bins // rel_bin_size)
-        self.upper_bounds = np.empty(n_bins // rel_bin_size)
-        self.upper_bounds.fill(np.inf)
-        # Sets upper bound to be zero for sizes below min_vessel_sz
-        self.upper_bounds[: min_vessel_sz // rel_bin_size] = 0
-        self.n_bins = n_bins
-        self.rel_bin_size = rel_bin_size
-        self.C = self._compute_C(n_bins, rel_bin_size)
-
-    def _compute_C(self, n_bins, rel_bin_size):
-        C = np.zeros([n_bins, n_bins // rel_bin_size])
-        for i in range(n_bins):
-            C[i, i // rel_bin_size] = 1.0 / rel_bin_size
-        return C
-
-    def __call__(self, x):
-        return self.C @ x
-
-    def guess(self, x):
-        return self.C.T @ x
-
-
-class AISPriorCouplingFunction(BinCouplingFunction):
-    default_max_augment_len = 40.0
-    lower_bounds = np.array([0, 0, 0])
-    upper_bounds = np.array([np.inf, np.inf, np.inf])
-
-    def __init__(self, n_bins, rel_bin_size, l_min, l_max, df):
-        dvs = df
-        assert n_bins % rel_bin_size == 0
-        self.rel_bin_size = rel_bin_size
-        self.in_bins = compute_bins(l_min, l_max, n_bins // rel_bin_size)
-        self.out_bins = compute_bins(l_min, l_max, n_bins)
-
-        base, _ = np.histogram(dvs.gfw_length, bins=self.in_bins)
-        self.base = base / base.sum()
-        self.C = self._compute_C(n_bins, rel_bin_size)
-
-    def __call__(self, x):
-        n, alpha, max_aug_len = x
-        scale = np.maximum(1 - compute_lengths(self.in_bins) / max_aug_len, 0)
-        binned = n * self.base * (1 + alpha * scale)
-        return self.C @ binned
-
-    def guess(self, x):
-        return [x.sum(), 0, self.default_max_augment_len]
 
 
 # +
@@ -632,7 +252,7 @@ results_byregion = {}
 for region in ["indian", "pacific"]:
     # detections in the region under the scoring threshold
     # non null sar length means it is a sar detection
-    o = compute_o(
+    o = sarm.compute_o(
         df[
             (df.region == region)
             & (df.score < matching_threshold)
@@ -640,7 +260,7 @@ for region in ["indian", "pacific"]:
         ],
         lengths,
     )
-    results_byregion[region] = infer_vessels(o, d, L, bin_coupling_func)
+    results_byregion[region] = sarm.infer_vessels(o, d, L, bin_coupling_func)
     print(f"{region} has {results_byregion[region].x.sum():.0f} dark vessels")
 # -
 
@@ -782,7 +402,7 @@ y = df_m.sar_length.values
 x = df_m.gfw_length.values
 quantiles = [0.333, 0.667]
 # quantiles = np.linspace(0,100,101)[1:-1]/100
-models = [fit_line(x, y, q) for q in quantiles]
+models = [sarm.fit_line(x, y, q) for q in quantiles]
 models = pd.DataFrame(models, columns=["q", "a", "b", "lb", "ub"])
 
 
@@ -797,7 +417,7 @@ ys = []
 quantiles_colors = ["#999999", "#4a4a4a"]
 for i in range(models.shape[0]):
     q = models.q[i]
-    y_ = get_y(models.a[i], models.b[i], x_)
+    y_ = sarm.get_y(models.a[i], models.b[i], x_)
     ys.append(y_)
     quants[q] = y_
     ax.plot(
@@ -884,11 +504,11 @@ ax.scatter(
 x = df_small.gfw_length.values
 y = df_small.detected_t.values
 recall_quantiles = [0.5]
-models_ = [fit_line(x, y, q) for q in recall_quantiles]
+models_ = [sarm.fit_line(x, y, q) for q in recall_quantiles]
 models_ = pd.DataFrame(models_, columns=["q", "a", "b", "lb", "ub"])
 for i in range(models_.shape[0]):
     q = models_.q[i]
-    y_ = get_y(models_.a[i], models_.b[i], x_)
+    y_ = sarm.get_y(models_.a[i], models_.b[i], x_)
     ax.plot(
         x_[(y_ < max_detect_rate) & (y_ > 0)],  # (y_<max_detect_rate)&(y_>0)
         # makes sure that the line
@@ -987,7 +607,7 @@ for ax in axs:
     ax.set_anchor("W")
 plt.tight_layout()
 
-plt.savefig("figure3.png", dpi=300, bbox_inches="tight")
+# plt.savefig("figure3.png", dpi=300, bbox_inches="tight")
 # -
 
 # # Figure 4
@@ -1132,7 +752,7 @@ for i, region in enumerate(["indian", "pacific"]):
     ax.legend(ncols=1, loc="upper left", bbox_to_anchor=(legend_x, 1))
     ax.set_ylim(dark_ylim)
 axs.format(toplabels=("Indian", "Pacific"))
-plt.savefig("figure4.png", dpi=300, bbox_inches="tight")
+# plt.savefig("figure4.png", dpi=300, bbox_inches="tight")
 # -
 # ## See How Well it Does
 #
@@ -1150,129 +770,18 @@ sample_size = np.random.randint(len(all_indices) // 4, 4 * len(all_indices) // 5
 sample_size
 
 len(all_indices) // 4, 4 * len(all_indices) // 5, len(all_indices)
-# -
-
-
 # +
-def run_sims(n_trials):
-    array = [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]]
-    fig, axs = pplt.subplots(array, figwidth=10, share=True, figheight=8)
-    plt.rc("legend", fontsize="10")
-
-    pred = []
-    act = []
-    ds = []
-
-    lmin, lmax = 0, 400
-    n_bins = 400
-    bins = compute_bins(lmin, lmax, n_bins)
-    lengths = compute_lengths(bins)
-    likely_dtcts = df[df.likelihood_in > 0.99]
-    all_indices = np.arange(len(likely_dtcts))
-
-    for j in range(n_trials):
-        if j != 0 and j % 10 == 0:
-            print(".", end="", flush=True)
-        # Vary the number of samples we take so that we can have varying amounts of
-        # test data. This allows us to evaluate more of the output space.
-        sample_size = np.random.randint(
-            len(all_indices) // 4, 4 * len(all_indices) // 5
-        )
-        # Bootstrap sample (replace=True) from the train indices to create a model.
-        train_indices = np.random.choice(all_indices, size=sample_size, replace=True)
-
-        df_r2 = likely_dtcts.iloc[train_indices]
-        # Only SSVIDs not used by the training set can be used for test
-        ssvids_for_train = df_r2.ssvid.unique()
-        ssvids_for_test = set(likely_dtcts.ssvid) - set(ssvids_for_train)
-
-        # compute L off of only very high confidence matches in the training data
-        df_m2 = df_r2[df_r2.match_review == "yes"]
-        compute_L = LComputer(df_m2.gfw_length.values, df_m2.sar_length.values)
-
-        # df_r -- for recall as a function of length
-        df_large2 = df_r2[(df_r2.gfw_length > 60)]
-        max_detect_rate2 = len(df_large2[df_large2.score > matching_threshold]) / len(
-            df_large2
-        )
-
-        df_small2 = df_r2[(df_r2.gfw_length < 60)]
-        df_small2["detected_t"] = df_small2.score.apply(
-            lambda x: 1 if x > matching_threshold else 0
-        )
-        df_small2 = df_small.groupby("ssvid").mean()
-
-        L = compute_L(bins)
-        d = compute_d(lengths, max_p=max_detect_rate2, df_small=df_small2)  #
-
-        ds.append(d)
-
-        # Coupling Matrix
-        model_bin_size = 5
-        assert n_bins % model_bin_size == 0
-        # tophat
-        C = np.zeros([n_bins, n_bins // model_bin_size])
-        for i in range(n_bins):
-            C[i, i // model_bin_size] = 1.0 / model_bin_size
-
-        # vessels not in the sample and very likely in the scenes
-        df_temp = likely_dtcts[likely_dtcts.ssvid.isin(ssvids_for_test)]
-        o = compute_o(df_temp[df_temp.score > matching_threshold], lengths)
-        the_result = infer_vessels(o, d, L, bin_coupling_func)
-
-        predicted_vessels = the_result.x.sum()
-        actual_vessels = df_temp.likelihood_in.sum()
-
-        pred.append(predicted_vessels)
-        act.append(actual_vessels)
-
-        if j < 16:
-            ax = axs[j]
-            ax.hist(
-                df_temp[(df_temp.likelihood_in > 0.5)].gfw_length,
-                color="red",
-                alpha=0.5,
-                bins=50,
-                range=(0, 250),
-                label="vessels in ais",
-            )
-
-            ax.plot(
-                [model_bin_size * (1 / 2 + i) for i in range(len(the_result.x))],
-                the_result.x,
-                "k:",
-                linewidth=1,
-                label="Expected vessels",
-            )
-            ax.set_xlim(0, 250)
-            ax.set_xlabel("length, m")
-            ax.set_ylabel("number of vessels")
-            ax.set_title(
-                f"Modeled: {the_result.x.sum():.0f}\
-          Actual:  {df_temp.likelihood_in.sum():.0f}"
-            )
-
-            if j == 15:
-                ax.legend(ncols=1)
-                plt.savefig(
-                    f"sup_model_{matching_threshold}.png", dbpi=300, bbox_inches="tight"
-                )
-                plt.show()
-
-    return np.array(act), np.array(pred)
-
-
 # change to True to make your computer do a lot of work
 run_simulations = False
 n_trials = 10000
 
 if run_simulations:
-    act, pred = run_sims(n_trials=n_trials)
+    act, pred = sarm.run_sims(n_trials=n_trials)
     with open(f"samples_{n_trials}_{matching_threshold}.pickle", "wb") as f:
         pickle.dump({"act": act, "pred": pred}, f)
 else:
     print("WARNING: Loading canned data since run_simulations is False!")
-    with open(f"samples_{n_trials}_{matching_threshold}.pickle", "rb") as f:
+    with open(f"samples{n_trials}_{matching_threshold}.pickle", "rb") as f:
         x = pickle.load(f)
     act = x["act"]
     pred = x["pred"]
@@ -1438,3 +947,4 @@ for region, dark_vessels in zip(regions, dark_vessels_ranges):
         print(
             f"dark vessels: {dark}, dark fishing: {dark_fishing:.0f}, percent dark fishing: {per_df:.1f}%"
         )
+# -

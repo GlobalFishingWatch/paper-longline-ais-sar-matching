@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -19,6 +19,11 @@
 
 # %%
 import pandas as pd
+
+import ais_sar_matching.sar_analysis as sarm
+
+# %load_ext autoreload
+# %autoreload 2
 
 # %%
 # inputs
@@ -129,7 +134,7 @@ using(detect_id, ssvid)
 
 # print(q)
 
-df = pd.read_gbq(q, project_id="world-fishing-827")
+df = sarm.gbq(q)
 
 # %%
 df.head()
@@ -171,7 +176,7 @@ select * except(ISO_TER1, TERRITORY1),
  with_eez
  using(scene_id, ssvid, detect_id)"""
 
-df2 = pd.read_gbq(q, project_id="world-fishing-827")
+df2 = sarm.gbq(q)
 
 # %%
 df2.head()

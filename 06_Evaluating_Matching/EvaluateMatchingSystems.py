@@ -42,11 +42,10 @@ orange = "#f68d4b"
 gold = "#f8ba47"
 green = "#ebe55d"
 
+import ais_sar_matching.sar_analysis as sarm
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
-
+# %load_ext autoreload
+# %autoreload 2
 # -
 
 score_ave_table = "proj_walmart_dark_targets.matching_v20210421_2_scored"
@@ -108,7 +107,7 @@ reviewed_table
 using(ssvid, detect_id)
 
 """
-df = gbq(q)
+df = sarm.gbq(q)
 
 df.head()
 
@@ -525,4 +524,4 @@ ax2.set_title(
 ax2.plot([-11, 3], [-11, 3], color=navy)
 paper_fig.subplots_adjust(hspace=0.4, wspace=0.4)
 plt.show()
-paper_fig.savefig("scores_analysis.png", dpi=300, bbox_inches="tight")
+# paper_fig.savefig('scores_analysis.png', dpi=300, bbox_inches='tight')

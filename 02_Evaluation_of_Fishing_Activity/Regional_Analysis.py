@@ -29,7 +29,13 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from shapely import wkt
 from six.moves import zip
 
+import ais_sar_matching.sar_analysis as sarm
+
 # psm.use(psm.styles.chart_style)
+
+
+# %load_ext autoreload
+# %autoreload 2
 
 # GFW Colors
 purple = "#d73b68"
@@ -39,51 +45,24 @@ gold = "#f8ba47"
 green = "#ebe55d"
 # %%
 # Get the footprints of the acquisitions for Madagascar and French Polynesia
-def get_footprint(detection_table):
-
-    q = """
-    select distinct(footprint)
-    from `{detection_table}`
-    """
-
-    df_footprint = pd.read_gbq(
-        q.format(detection_table=detection_table),
-        project_id="world-fishing-827",
-        dialect="standard",
-    )
-
-    df_footprint = gpd.GeoDataFrame(df_footprint)
-    df_footprint["geometry"] = df_footprint.footprint.apply(wkt.loads)
-    overpasses = shapely.ops.cascaded_union(df_footprint.geometry.values)
-    return df_footprint, overpasses
-
-
 # madacascar
 detection_table_mad = (
     "world-fishing-827.proj_walmart_dark_targets.walmart_ksat_detections_ind_v20200110"
 )
-mad_footprints = get_footprint(detection_table_mad)
+mad_footprints = sarm.get_footprint(detection_table_mad)
 
 
 # french polynesia
 detection_table_fp = (
     "world-fishing-827.proj_walmart_dark_targets.walmart_ksat_detections_fp_v20200117"
 )
-fp_footprints = get_footprint(detection_table_fp)
-
+fp_footprints = sarm.get_footprint(detection_table_fp)
 
 # %%
 # Get the area of the union of each acquisition within each region
-def get_area_shape(sh):
-    """pass a shapely polygon or multipolygon, get area in square km"""
-    b = sh.bounds
-    avg_lat = b[1] / 2 + b[3] / 2
-    tot_area = sh.area * 111 * 111 * math.cos(avg_lat * 3.1416 / 180)
-    return tot_area
 
-
-print(int(get_area_shape(fp_footprints[1])), "sq km near French Polynesia")
-print(int(get_area_shape(mad_footprints[1])), "sq km near Madagascar")
+print(int(sarm.get_area_shape(fp_footprints[1])), "sq km near French Polynesia")
+print(int(sarm.get_area_shape(mad_footprints[1])), "sq km near Madagascar")
 
 # %%
 # Sum of area of individual footprints within each region.
@@ -193,7 +172,7 @@ is_drifting_longline,
 on_fishing_list_best,is_risky
 """
 
-df_ais = pd.read_gbq(q, project_id="world-fishing-827")
+df_ais = sarm.gbq(q)
 
 # %%
 # Create longline fishing raster for plotting
@@ -201,69 +180,6 @@ ll_df = df_ais[df_ais.is_drifting_longline]
 fishing_longlines = pyseas.maps.rasters.df2raster(
     ll_df, "lon_bin", "lat_bin", "fishing_hours", xyscale=4, per_km2=True
 )
-
-
-# %%
-# Create a figure of the footprints in one plot for the report
-def footprints():
-    with pyseas.context(pyseas.styles.dark):
-        fig = plt.figure(figsize=(15.5, 5), constrained_layout=True)
-        gs = fig.add_gridspec(1, 2)
-        bounds1 = mad_footprints[0].total_bounds
-        ax1 = pyseas.maps.create_map(
-            gs[0],
-            projection="regional.indian",
-            extent=([bounds1[0] - 1, bounds1[2] + 1, bounds1[1] - 1, bounds1[3] + 1]),
-        )
-        pyseas.maps.add_land(ax1)
-        pyseas.maps.add_eezs(ax1, edgecolor="white", linewidth=0.4)
-        pyseas.maps.add_countries(ax1)
-        # pyseas.maps.add_scalebar(ax1)
-        ax1.add_geometries(
-            mad_footprints[0].geometry.values,
-            crs=ccrs.PlateCarree(),
-            alpha=0.3,
-            edgecolor="k",
-        )  # for Lat/Lon data.
-        ax1.set_extent([bounds1[0] - 1, bounds1[2] + 1, bounds1[1] - 1, bounds1[3] + 1])
-
-        ax1.add_geometries(
-            [mad_footprints[1]],
-            crs=ccrs.PlateCarree(),
-            alpha=1,
-            facecolor="none",
-            edgecolor="red",
-        )  # for Lat/Lon data.
-
-        plt.title("Madagascar", fontsize=14)
-
-        bounds = fp_footprints[0].total_bounds
-        ax2 = pyseas.maps.create_map(
-            gs[1],
-            projection="regional.south_pacific",
-            extent=([bounds[0] - 1, bounds[2] + 1, bounds[1] - 1, bounds[3] + 1]),
-        )
-        pyseas.maps.add_land(ax2)
-        pyseas.maps.add_eezs(ax2, edgecolor="white", linewidth=0.4)
-        pyseas.maps.add_countries(ax2)
-        ax2.add_geometries(
-            fp_footprints[0].geometry.values,
-            crs=ccrs.PlateCarree(),
-            alpha=0.3,
-            edgecolor="k",
-        )  # for Lat/Lon data.
-        ax2.set_extent([bounds[0] - 1, bounds[2] + 1, bounds[1] - 1, bounds[3] + 1])
-
-        ax2.add_geometries(
-            [fp_footprints[1]],
-            crs=ccrs.PlateCarree(),
-            alpha=1,
-            facecolor="none",
-            edgecolor="red",
-        )  # for Lat/Lon data.
-
-        plt.title("French Polynesia", fontsize=14)
-
 
 # %%
 # Madagascar Detections and matches including manually identified and eezs
@@ -320,7 +236,7 @@ left join eez_join
 using(lat_bin, lon_bin)
 
 """
-md_df_detects = pd.read_gbq(q, project_id="world-fishing-827")
+md_df_detects = sarm.gbq(q)
 
 
 # %%
@@ -380,41 +296,10 @@ left join eez_join
 using(lat_bin, lon_bin)
 
 """
-fp_df_detects = pd.read_gbq(s, project_id="world-fishing-827")
-
+fp_df_detects = sarm.gbq(s)
 
 # %% [markdown]
 # ## Fig 1
-
-# %%
-def label_axes(fig, labels=None, loc=None, **kwargs):
-    """
-    Walks through axes and labels each.
-
-    kwargs are collected and passed to `annotate`
-
-    Parameters
-    ----------
-    fig : Figure
-         Figure object to work on
-
-    labels : iterable or None
-        iterable of strings to use to label the axes.
-        If None, lower case letters are used.
-
-    loc : len=2 tuple of floats
-        Where to put the label in axes-fraction units
-    """
-    if labels is None:
-        labels = string.ascii_lowercase
-
-    # re-use labels rather than stop labeling
-    labels = cycle(labels)
-    if loc is None:
-        loc = (0.9, 0.9)
-    for ax, lab in zip(fig.axes, labels):
-        ax.annotate(lab, xy=loc, xycoords="axes fraction", **kwargs)
-
 
 # %%
 # This is to adjust the plots below to remove the white space between subplots.

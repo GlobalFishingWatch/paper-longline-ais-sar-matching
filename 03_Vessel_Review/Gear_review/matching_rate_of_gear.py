@@ -49,10 +49,10 @@ from matplotlib import colorbar, colors
 from shapely import wkt
 from shapely.geometry import Point
 
+import ais_sar_matching.sar_analysis as sarm
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
+# %load_ext autoreload
+# %autoreload 2
 
 # %% [markdown]
 # ## Update Gear Review
@@ -95,7 +95,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_scores
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 
 # %%
 df.head()
@@ -138,7 +138,7 @@ left join max_scores
 using(ssvid, scene_id)
 order by max_scores desc"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 
 # %%
 df = df.dropna()
@@ -232,7 +232,7 @@ left join max_scores
 using(ssvid, scene_id)
 order by max_scores desc"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 
 # %%
 

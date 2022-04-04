@@ -39,187 +39,15 @@ from pyseas import maps, styles
 # +
 from pyseas.contrib import plot_tracks
 
+import ais_sar_matching.sar_analysis as sarm
+
 # %matplotlib inline
 
-
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
-
-# +
-q = """
-with good_segs as (
-        select seg_id
-        from `gfw_research.pipe_v20201001_segs`
-        where good_seg),
-
-mmsi_of_interest as (
-      select distinct ssvid from
-     world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20201221
-     union all
-     select distinct ssvid from
-     world-fishing-827.scratch_david.test_ksat_detections_v20210421_1_extrapolated_ais)
-
-select
-ssvid,
-lat,
-lon,
-timestamp,
-speed_knots,
-course,
-seg_id,
-night,
-type,
-nnet_score
-from `gfw_research.pipe_v20201001`
-where ssvid in
-(select distinct ssvid from mmsi_of_interest)
-and date(_partitiontime) between "2019-08-09" and "2020-01-31"
-and seg_id in (select seg_id from good_segs)
-
-"""
-
-# with open("temp.sql","w") as f:
-#     f.write(q)
-
-# command = '''cat temp.sql | bq query --replace \
-#          --destination_table=proj_walmart_dark_targets.all_mmsi_positions\
-#           --allow_large_results --use_legacy_sql=false'''
-# os.system(command)
-
-# os.system("rm -f temp.sql")
-
-
-# +
-q = """
-with good_segs as (
-        select seg_id
-        from `gfw_research.pipe_v20201001_segs`
-        where good_seg)
-
-
-select ssvid, lat, lon, timestamp, speed_knots from
-proj_walmart_dark_targets.all_mmsi_positions
-join
-good_segs
-using(seg_id)
-where ssvid  in (
-select ssvid from
-`world-fishing-827.proj_walmart_dark_targets.all_mmsi_vessel_class`
-where final_vessel_class = 'gear' )
-
-
-"""
-
-df = gbq(q)
-
-# +
-q = """select ssvid, ifnull(best.best_vessel_class, "none") vessel_class, ais_identity.shipname_mostcommon.value	as ship_name
-from `world-fishing-827.gfw_research.vi_ssvid_v20210202`
-where ssvid in (select distinct ssvid from proj_walmart_dark_targets.all_mmsi_positions)"""
-
-df_i = gbq(q)
+# %load_ext autoreload
+# %autoreload 2
 # -
 
-df_i
-
-df = df.merge(df_i, on="ssvid", how="left").fillna("None")
-
-df.ssvid.nunique()
-
-
-def plot_track_speed(df):
-    """
-    Function to plot vessels track points colored by speed,
-    with a histogram of speed
-    """
-
-    with pyseas.context(styles.light):
-        for i in df.ssvid.unique():
-
-            d = df[df["ssvid"] == i]
-
-            fig = plt.figure(
-                figsize=(10, 14),
-            )
-            gs = gridspec.GridSpec(ncols=1, nrows=3, figure=fig)
-            projinfo = plot_tracks.find_projection(df.lon, df.lat)
-
-            ax = maps.create_map(gs[0])
-            ax.set_global()
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            cm = plt.cm.get_cmap("RdYlBu_r")
-            z = np.array(d.speed_knots)
-
-            normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
-            zero = ax.scatter(
-                d.lon.values,
-                d.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar0 = plt.colorbar(zero)
-            cbar0.set_label("Speed", rotation=270)
-
-            ax1 = maps.create_map(
-                gs[1], projection=projinfo.projection, extent=projinfo.extent
-            )
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            one = ax1.scatter(
-                d.lon.values,
-                d.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar1 = plt.colorbar(one)
-            cbar1.set_label("Speed", rotation=270)
-
-            ax2 = fig.add_subplot(gs[2])
-
-            Q1 = np.quantile(d.speed_knots, 0.25)
-            Q3 = np.quantile(d.speed_knots, 0.75)
-            IQR = Q3 - Q1
-            df_noOutliers = d.speed_knots[
-                ~(
-                    (d.speed_knots < (Q1 - 1.5 * IQR))
-                    | (d.speed_knots > (Q3 + 1.5 * IQR))
-                )
-            ]
-
-            ax2.hist(d.speed_knots, bins="auto")
-            plt.xlabel("Speed")
-            plt.ylabel("Count")
-
-            print(i)
-            print(d.vessel_class.iloc[0])
-            print(d.ship_name.iloc[0])
-            plt.show()
-            print("\n")
-
-
 # # Things that are Gear
-
-plot_track_speed(df)
-
-plot_track_speed(df[df.ssvid == "572259220"])
 
 # +
 q = """
@@ -242,12 +70,19 @@ where final_vessel_class = 'gear' )
 
 """
 
-df = gbq(q)
+df = sarm.gbq(q)
+
+# +
+q = """select ssvid, ifnull(best.best_vessel_class, "none") vessel_class, ais_identity.shipname_mostcommon.value	as ship_name
+from `world-fishing-827.gfw_research.vi_ssvid_v20210202`
+where ssvid in (select distinct ssvid from proj_walmart_dark_targets.all_mmsi_positions)"""
+
+df_i = sarm.gbq(q)
 # -
 
 df = df.merge(df_i, on="ssvid", how="left").fillna("None")
 
-plot_track_speed(df)
+sarm.plot_track_speed(df)
 
 
 # Pete's Review
@@ -649,7 +484,7 @@ cross join
 
 """
 
-AOI_tracks = gbq(closer_look)
+AOI_tracks = sarm.gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
@@ -661,7 +496,7 @@ AOI_tracks.head()
 AOI_tracks.ssvid.nunique()
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
-plot_track_speed(AOI_tracks)
+sarm.plot_track_speed(AOI_tracks)
 
 # +
 closer_look = """with good_segs as (
@@ -713,11 +548,11 @@ cross join
 
 """
 
-AOI_tracks = gbq(closer_look)
+AOI_tracks = sarm.gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
-plot_track_speed(AOI_tracks)
+sarm.plot_track_speed(AOI_tracks)
 
 # +
 closer_look = """with good_segs as (
@@ -769,11 +604,11 @@ cross join
 
 """
 
-AOI_tracks = gbq(closer_look)
+AOI_tracks = sarm.gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
-plot_track_speed(AOI_tracks)
+sarm.plot_track_speed(AOI_tracks)
 
 
 # +
@@ -870,7 +705,7 @@ select * from proj_walmart_dark_targets.all_mmsi_vessel_class
 union all
 select * from old_gear)"""
 
-f1 = gbq(final)
+f1 = sarm.gbq(final)
 # -
 
 len(f1)
@@ -885,7 +720,7 @@ q = """select ssvid, best.best_vessel_class from `world-fishing-827.gfw_research
 best.best_vessel_class != "gear" and ssvid in (
 select ssvid from proj_walmart_dark_targets.all_mmsi_vessel_class where final_vessel_class = 'gear')
 """
-df_conern = gbq(q)
+df_conern = sarm.gbq(q)
 
 df_conern
 
@@ -912,7 +747,7 @@ df_conern
 # '367753890':'passenger'
 #
 
-df = gbq("select * from proj_walmart_dark_targets.all_mmsi_vessel_class")
+df = sarm.gbq("select * from proj_walmart_dark_targets.all_mmsi_vessel_class")
 df.head()
 
 df.at[df.ssvid == "985380200", "final_vessel_class"] = "passenger"

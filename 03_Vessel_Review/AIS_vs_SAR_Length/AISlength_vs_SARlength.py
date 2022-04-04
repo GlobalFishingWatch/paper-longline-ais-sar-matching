@@ -1,21 +1,27 @@
-# %%
+# %% [markdown]
+# # Get relationship between vessel length from AIS and SAR
+
 import math
 from random import random
 
 import matplotlib.pyplot as plt
 import numpy as np
+# %%
 import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from patsy import dmatrices
+from scipy import stats
 from scipy.optimize import curve_fit
 from scipy.stats import norm
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
 
-# %% [markdown]
-# # Get relationship between vessel length from AIS and SAR
+import ais_sar_matching.sar_analysis as sarm
+
+# %load_ext autoreload
+# %autoreload 2
 
 # %%
 q = """
@@ -40,10 +46,10 @@ and ssvid not in (select ssvid from `gfw_research.vi_ssvid_v20201101` where acti
 
 """
 
-df = pd.read_gbq(q, project_id="world-fishing-827")
+df = sarm.gbq(q)
 
 # %%
-# filter to things that have lenghts in both
+# filter to things that have lengths in both
 df = df[(df.gfw_length > 0) & (df.sar_length > 0)]
 df.head()
 
@@ -86,9 +92,7 @@ plt.show()
 #  - check to see if errors are normally distributed
 #  - check for heteroskedasticity
 
-from scipy import stats
 # %%
-from sklearn.linear_model import LinearRegression
 
 # SAR
 # do a box cox transformation of the length from sar:
@@ -121,7 +125,7 @@ model_r2 = model.score(x, y)
 print("R^2: {0}".format(model_r2))
 
 # %% [markdown]
-# ### Ouch! R2 is only .3!
+# ### R2 is only .3
 #
 # SAR does predict length, but not that well.
 
@@ -148,34 +152,11 @@ df["fitted_data_test"] = df.sar_length.apply(
 # %%
 df.head()
 
-
 # %%
 # Yep, the box cox transofrmation is doing what we expect
 
 # %%
-# copied from here: https://jeffmacaluso.github.io/post/LinearRegressionAssumptions/
-# but it is a simple calculation
-
-
-def calculate_residuals(model, features, label):
-    """
-    Creates predictions on the features with the model and calculates residuals
-    """
-    predictions = model.predict(features)
-    df_results = pd.DataFrame(
-        {
-            "Actual": label.flatten(),
-            "Predicted": predictions.flatten(),
-            "x": features.flatten(),
-        }
-    )
-    df_results["Residuals"] = abs(df_results["Actual"]) - abs(df_results["Predicted"])
-
-    return df_results
-
-
-# %%
-d = calculate_residuals(model, x, y)
+d = sarm.calculate_residuals(model, x, y)
 d.head()
 
 
@@ -194,62 +175,11 @@ plt.title("Regression of AIS Length to \n Box-Cox Transformed SAR Length")
 # Does it look like the errors are normally distributed?
 sns.displot(d.Residuals)
 
-
 # %% [markdown]
 # #### It *looks* like the residuals are normally distributed. Let's do a fancy test to see if they are.
 
 # %%
-# are these normally distributed?
-
-# copied the following from
-# https://jeffmacaluso.github.io/post/LinearRegressionAssumptions/
-
-
-def normal_errors_assumption(model, features, label, p_value_thresh=0.05):
-    """
-    Normality: Assumes that the error terms are normally distributed.
-    If they are not,
-    nonlinear transformations of variables may solve this.
-
-    This assumption being violated primarily causes issues with
-    the confidence intervals
-    """
-    from statsmodels.stats.diagnostic import normal_ad
-
-    print("Assumption 2: The error terms are normally distributed", "\n")
-
-    # Calculating residuals for the Anderson-Darling test
-    df_results = calculate_residuals(model, features, label)
-
-    print("Using the Anderson-Darling test for normal distribution")
-
-    # Performing the test on the residuals
-    p_value = normal_ad(df_results["Residuals"])[1]
-    print("p-value from the test - below 0.05 generally means non-normal:", p_value)
-
-    # Reporting the normality of the residuals
-    if p_value < p_value_thresh:
-        print("Residuals are not normally distributed")
-    else:
-        print("Residuals are normally distributed")
-
-    # Plotting the residuals distribution
-    plt.subplots(figsize=(12, 6))
-    plt.title("Distribution of Residuals")
-    sns.distplot(df_results["Residuals"])
-    plt.show()
-
-    print()
-    if p_value > p_value_thresh:
-        print("Assumption satisfied")
-    else:
-        print("Assumption not satisfied")
-        print()
-        print("Confidence intervals will likely be affected")
-        print("Try performing nonlinear transformations on variables")
-
-
-normal_errors_assumption(model, x, y)
+sarm.normal_errors_assumption(model, x, y)
 
 # %% [markdown]
 # ### Great -- a function I copied from the internet says my residuals are normally distributed. Now get the standard deviation of the residuals and save it.

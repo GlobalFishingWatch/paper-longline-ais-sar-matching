@@ -27,10 +27,10 @@ import pyseas.contrib as psc
 import pyseas.maps as psm
 import seaborn as sns
 
+import ais_sar_matching.sar_analysis as sarm
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
+# %load_ext autoreload
+# %autoreload 2
 
 # %%
 q = """with
@@ -99,7 +99,7 @@ where a.ssvid = '416623000'
 and b.ssvid = '412685210'
 order by date, hour
 """
-df = gbq(q)
+df = sarm.gbq(q)
 
 # %%
 df.head()
@@ -147,7 +147,7 @@ timestamp_diff(timestamp, last_timestamp, second) > 60
 
 order by timestamp"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 
 # %%
 df.head()
@@ -178,7 +178,7 @@ and seg_id in
 (select seg_id from `gfw_research.pipe_v20201001_segs` where good_seg and not overlapping_and_short)
 order by ssvid, timestamp
 """
-df = gbq(q)
+df = sarm.gbq(q)
 
 
 # %%

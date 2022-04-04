@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -45,101 +45,13 @@ from pyseas import maps, styles
 # +
 from pyseas.contrib import plot_tracks
 
+import ais_sar_matching.sar_analysis as sarm
+
 # %matplotlib inline
 
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
-
-# -
-
-
-def plot_track_speed(df):
-    """
-    Function to plot vessels track points colored by speed, with a histogram of speed
-    """
-
-    with pyseas.context(styles.light):
-        for i in df.ssvid.unique():
-
-            d = df[df["ssvid"] == i]
-
-            fig = plt.figure(
-                figsize=(10, 14),
-            )
-            gs = gridspec.GridSpec(ncols=1, nrows=3, figure=fig)
-            projinfo = plot_tracks.find_projection(df.lon, df.lat)
-
-            ax = maps.create_map(
-                gs[0]
-            )  # projection=projinfo.projection, extent=projinfo.extent)
-            ax.set_global()
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            cm = plt.cm.get_cmap("RdYlBu_r")
-            z = np.array(d.speed_knots)
-
-            normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
-            zero = ax.scatter(
-                d.lon.values,
-                d.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar0 = plt.colorbar(zero)
-            cbar0.set_label("Speed", rotation=270)
-
-            ax1 = maps.create_map(
-                gs[1], projection=projinfo.projection, extent=projinfo.extent
-            )
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            one = ax1.scatter(
-                d.lon.values,
-                d.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar1 = plt.colorbar(one)
-            cbar1.set_label("Speed", rotation=270)
-
-            ax2 = fig.add_subplot(gs[2])
-
-            Q1 = np.quantile(d.speed_knots, 0.25)
-            Q3 = np.quantile(d.speed_knots, 0.75)
-            IQR = Q3 - Q1
-            df_noOutliers = d.speed_knots[
-                ~(
-                    (d.speed_knots < (Q1 - 1.5 * IQR))
-                    | (d.speed_knots > (Q3 + 1.5 * IQR))
-                )
-            ]
-
-            ax2.hist(d.speed_knots, bins="auto")
-            plt.xlabel("Speed")
-            plt.ylabel("Count")
-
-            print(i)
-            plt.show()
-            print("\n")
-
+# %load_ext autoreload
+# %autoreload 2
 
 # +
 q = """with gear_in_scene as
@@ -161,7 +73,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_score
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 # -
 
 df.head()
@@ -203,7 +115,7 @@ using(ssvid, scene_id)
 # left join max_scores
 # using(ssvid, scene_id)"""
 
-df = gbq(q)
+df = sarm.gbq(q)
 # -
 
 df.head()
@@ -245,7 +157,7 @@ group by ssvid order by times_in_scene desc
 
 """
 
-df2 = gbq(q)
+df2 = sarm.gbq(q)
 # -
 
 df2.head()
@@ -281,8 +193,8 @@ and date(_partitiontime) between "2019-08-09" and "2020-01-31"
 order by timestamp
 """
 
-df_gear = gbq(q)
+df_gear = sarm.gbq(q)
 # -
 df_gear.head()
 
-plot_track_speed(df_gear)
+sarm.plot_track_speed(df_gear)

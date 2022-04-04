@@ -26,10 +26,10 @@ mpl.rcParams["axes.spines.right"] = False
 mpl.rcParams["axes.spines.top"] = False
 import cartopy.crs as ccrs
 
+import ais_sar_matching.sar_analysis as sarm
 
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
-
+# %load_ext autoreload
+# %autoreload 2
 
 # %%
 q = """with detect_lat_lon as
@@ -102,206 +102,10 @@ where ssvid in (select ssvid from `world-fishing-827.proj_walmart_dark_targets.a
 order by score_ave desc
 """
 
-df_info = gbq(q)
-
+df_info = sarm.gbq(q)
 
 # %% [markdown]
 # ## Supplemental vessel location probability raster figures
-
-# %%
-def plot_ssvid_scene(ax1, ax2, ax3, ax4, ssvid, scene_id, df):
-    plt.rcParams["axes.grid"] = False
-    di = df[(df.ssvid == ssvid) & (df.scene_id == scene_id)]
-
-    q = f"""select * from proj_walmart_dark_targets.rasters_single
-    where scene_id = '{scene_id}' and ssvid = '{ssvid}' """
-    df_r = gbq(q)
-
-    the_max_lat = df_r.detect_lat.max()
-    the_max_lon = df_r.detect_lon.max()
-    the_min_lat = df_r.detect_lat.min()
-    the_min_lon = df_r.detect_lon.min()
-
-    start_lon = di.lon1.values[0]
-    end_lon = di.lon2.values[0]
-    start_lat = di.lat1.values[0]
-    end_lat = di.lat2.values[0]
-    likely_lon = di.likely_lon.values[0]
-    likely_lat = di.likely_lat.values[0]
-
-    ep = 0.01
-
-    the_max_lat = max([the_max_lat, start_lat + ep, end_lat + ep])
-    the_max_lon = max([df_r.detect_lon.max(), start_lon + ep, end_lon + ep])
-    the_min_lat = min([df_r.detect_lat.min(), start_lat - ep, end_lat - ep])
-    the_min_lon = min([df_r.detect_lon.min(), start_lon - ep, end_lon - ep])
-
-    for delta_minutes in sorted(df_r.delta_minutes.unique(), reverse=True):
-
-        d = df_r[df_r.delta_minutes == delta_minutes]
-
-        min_lon = d.detect_lon.min()
-        min_lat = d.detect_lat.min()
-        max_lon = d.detect_lon.max()
-        max_lat = d.detect_lat.max()
-
-        # get the right scale
-        if delta_minutes >= 0:
-            scale = di.scale1.values[0]
-        else:
-            scale = di.scale2.values[0]
-
-        pixels_per_degree = int(round(scale * 111))
-        pixels_per_degree_lon = int(
-            round(scale * 111 * math.cos((min_lat / 2 + max_lat / 2) * 3.1416 / 180))
-        )
-        num_lons = int(round((max_lon - min_lon) * pixels_per_degree_lon)) + 1
-        num_lats = int(round((max_lat - min_lat) * pixels_per_degree)) + 1
-        num_lons, num_lats
-
-        grid = np.zeros(shape=(num_lats, num_lons))
-
-        def fill_grid(r):
-            y = int(round((r.detect_lat - min_lat) * pixels_per_degree))
-            x = int(round((r.detect_lon - min_lon) * pixels_per_degree_lon))
-            grid[y][x] += r.probability
-
-        d.apply(fill_grid, axis=1)
-
-        min_value = 1e-7
-        max_value = 1
-        #     grid[grid<min_value*100]=0
-        norm = mpcolors.LogNorm(vmin=min_value, vmax=max_value)
-
-        if delta_minutes >= 0:
-            ax = ax1
-        else:
-            ax = ax2
-        ax.imshow(
-            np.flipud(grid),
-            norm=norm,
-            extent=[min_lon, max_lon, min_lat, max_lat],
-            interpolation="nearest",
-        )
-
-        ax.set_xlim(the_min_lon, the_max_lon)
-        ax.set_ylim(the_min_lat, the_max_lat)
-        ax.scatter(
-            di.detect_lon, di.detect_lat, color="red", s=7, label="Radarsat2 Detection"
-        )
-        ax.set_facecolor("#440154FF")
-        ax.scatter(
-            start_lon,
-            start_lat,
-            s=7,
-            color="orange",
-            label="Vessel Position Before Detection",
-        )
-        ax.scatter(
-            end_lon,
-            end_lat,
-            s=7,
-            color="purple",
-            label="Vessel Position After Detection",
-        )
-        if delta_minutes >= 0:
-            ax.set_title(f"{delta_minutes:.2f} Minutes\nbefore Image", size=19)
-        else:
-            ax.set_title(f"{-delta_minutes:.2f} Minutes\nafter Image", size=19)
-        ax1.set_xlabel("lon", fontsize=17)
-        ax1.set_ylabel("lat", fontsize=17)
-        ax2.set_xticks([])
-        ax2.set_yticks([])
-        ax2.tick_params(axis="both", labelsize=16)
-
-        h, l = ax1.get_legend_handles_labels()
-        ax4.legend(
-            h, l, loc="upper left", markerscale=2.0, ncol=3, frameon=False, fontsize=14
-        )
-        ax4.set_facecolor("white")
-
-        ax4.set_xticks([])
-        ax4.set_yticks([])
-
-        ax4.grid(False)
-        ax4.axis("off")
-
-    # include multiplied raster
-    q = f"""select * from proj_walmart_dark_targets.rasters_mult where ssvid = '{ssvid}' and scene_id = '{scene_id}' """
-    d = gbq(q)
-
-    min_lon2 = d.detect_lon.min()
-    min_lat2 = d.detect_lat.min()
-    max_lon2 = d.detect_lon.max()
-    max_lat2 = d.detect_lat.max()
-
-    # scale is the larger
-    scale = di.max_scale.values[0]
-
-    pixels_per_degree = int(round(scale * 111))
-    pixels_per_degree_lon = int(
-        round(scale * 111 * math.cos((min_lat / 2 + max_lat / 2) * 3.1416 / 180))
-    )
-    num_lons = int(round((max_lon2 - min_lon2) * pixels_per_degree_lon)) + 1
-    num_lats = int(round((max_lat2 - min_lat2) * pixels_per_degree)) + 1
-    num_lons, num_lats
-
-    grid = np.zeros(shape=(num_lats, num_lons))
-
-    def fill_grid(r):
-        y = int(round((r.detect_lat - min_lat2) * pixels_per_degree))
-        x = int(round((r.detect_lon - min_lon2) * pixels_per_degree_lon))
-        grid[y][x] += r.probability
-
-    d.apply(fill_grid, axis=1)
-
-    ax3.scatter(di.detect_lon, di.detect_lat, color="red", s=7)
-
-    min_value = 1e-7
-    max_value = 1
-
-    norm = mpcolors.LogNorm(vmin=min_value, vmax=max_value)
-    im = ax3.imshow(
-        np.flipud(grid),
-        norm=norm,
-        extent=[min_lon2, max_lon2, min_lat2, max_lat2],
-        interpolation="nearest",
-    )
-
-    ax3.set_xlim(the_min_lon, the_max_lon)
-    ax3.set_ylim(the_min_lat, the_max_lat)
-    ax3.set_xticks([])
-    ax3.set_yticks([])
-    ax3.grid(False)
-
-    ax3.set_facecolor("#440154FF")
-    ax3.set_title("Multiplied Probabilities", size=19)
-
-    divider = make_axes_locatable(ax3)
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    cbar = fig2.colorbar(
-        im, cax=cax, orientation="vertical", fraction=0.15, aspect=40, pad=0.04
-    )
-
-    fontprops = fm.FontProperties(size=14)
-    scalebar = AnchoredSizeBar(
-        ax3.transData,
-        0.09,
-        "10 km",
-        "lower right",
-        pad=0.1,
-        color="white",
-        frameon=False,
-        size_vertical=0,
-        fontproperties=fontprops,
-    )
-    plt.minorticks_off()
-
-    ax3.add_artist(scalebar)
-
-
-# %% [markdown]
-# ### Vessel location probability figure
 
 # %%
 fig2 = plt.figure(figsize=(13, 9), constrained_layout=True)
@@ -316,7 +120,7 @@ ax2 = fig2.add_subplot(gs[0, 1])
 ax3 = fig2.add_subplot(gs[0, 2])
 ax4 = fig2.add_subplot(gs[1, 0:])
 
-plot_ssvid_scene(
+sarm.plot_ssvid_scene(
     ax1,
     ax2,
     ax3,
@@ -354,7 +158,7 @@ and 60 between minutes_lower and minutes_upper)
 or (13 between speed_lower and speed_upper
 and 120 between minutes_lower and minutes_upper)
 """
-df2 = gbq(df_all)
+df2 = sarm.gbq(df_all)
 
 # %%
 times = [-45, 15, 30, 60, 120]
