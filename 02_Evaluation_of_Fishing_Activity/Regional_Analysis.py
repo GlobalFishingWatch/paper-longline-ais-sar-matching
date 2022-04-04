@@ -1,18 +1,18 @@
 # %% [markdown]
 # # This notebook includes the code used to generate figure 1 for Revealing the Global Longline Fleet with Satellite Radar
-
-import math
-import string
-from itertools import cycle
-
-import cartopy
-import cartopy.crs as ccrs
-import cmocean
-import geopandas as gpd
-import matplotlib.patches as mpatches
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+#
+# import math
+# import string
+# from itertools import cycle
+#
+# import cartopy
+# import cartopy.crs as ccrs
+# import cmocean
+# import geopandas as gpd
+# import matplotlib.patches as mpatches
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import pandas as pd
 # %%
 import pyseas
 import pyseas.cm
@@ -21,9 +21,13 @@ import pyseas.maps.rasters
 import pyseas.styles
 import seaborn as sns
 import shapely
+import cartopy.crs as ccrs
+import numpy as np
 from cartopy import config
 from matplotlib import colorbar, colors
+import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
+import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from shapely import wkt
@@ -66,8 +70,8 @@ print(int(sarm.get_area_shape(mad_footprints[1])), "sq km near Madagascar")
 
 # %%
 # Sum of area of individual footprints within each region.
-mad_footprints[0]["area"] = mad_footprints[0].geometry.apply(get_area_shape)
-fp_footprints[0]["area"] = fp_footprints[0].geometry.apply(get_area_shape)
+mad_footprints[0]["area"] = mad_footprints[0].geometry.apply(sarm.get_area_shape)
+fp_footprints[0]["area"] = fp_footprints[0].geometry.apply(sarm.get_area_shape)
 
 print(
     "French Polynesia total area sq km:",
@@ -540,7 +544,7 @@ with np.errstate(invalid="ignore", divide="ignore"):
 
         plt.subplots_adjust(wspace=-0.20, hspace=0.05, left=0, right=1, bottom=0, top=1)
 
-        label_axes(
+        sarm.label_axes(
             fig1,
             loc=(0.02, 0.92),
             labels=["b", "c", "d", "e"],
