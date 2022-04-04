@@ -1,0 +1,10 @@
+# Jupyter Notebook
+*.ipynb_checkpoints
+*.ipynb
+
+# Mac
+*.DS_Store
+
+# Python
+__pycache__/
+*.egg-info/
