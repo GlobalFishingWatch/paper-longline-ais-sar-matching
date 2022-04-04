@@ -1,0 +1,21 @@
+#StandardSql
+# Score scored postitions and detections. This table uses the output of 02_score_detections as an input,
+# and produces a table that ranks by the combination of the detection and and ssvid score
+
+with
+
+scored_table as (select concat(ssvid, source) as ssvid_source, * from {{scored_table}}
+WHERE
+  -- score > 0
+  -- and
+  ssvid not in (select ssvid from `proj_walmart_dark_targets.all_mmsi_vessel_class` where final_vessel_class in ('gear', 'duplicate'))
+ -- and ( (probability1 > 0 and probability2>0)
+ -- or (scale1 is null or scale2 is null ))
+  )
+
+SELECT
+  *,
+  ROW_NUMBER() OVER (PARTITION BY detect_id ORDER BY score DESC) row_number_detect_id,
+  ROW_NUMBER() OVER (PARTITION BY ssvid_source, scene_id ORDER BY score DESC) row_number_ssvid
+FROM
+  scored_table

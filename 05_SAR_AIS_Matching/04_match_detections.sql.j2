@@ -1,0 +1,141 @@
+#StandardSql
+# Select best matches. This table uses the output of 03_rank_detections as an input,
+# and produces a table with the top 4 matches.
+-- 	1. Select ranked matches table output
+-- 	2. Select the detections table
+-- 	3. Join detections on shipping lanes - hours in that year_2018
+-- 	4. Select top matches from ranked matches. row num detect id == 1, now num ssvid ==1
+-- 	5. Select second, third, and fourth best match in the same way. remove already selected, reorder by new row number, select again
+--  6. Union all matches join & with shippinglanes/detections table
+
+with
+
+scores_ranked as (select * from `{{ranked_table}}`),
+
+objects_table as
+(
+SELECT TIMESTAMP_ADD(ProductStartTime, INTERVAL cast(timestamp_diff(ProductStopTime, ProductStartTime, SECOND)/2 as int64) SECOND) detect_timestamp,
+ DetectionId as detect_id,
+ lon detect_lon,
+ lat detect_lat,
+ scene_id
+ FROM
+{{ detections_table }}
+
+ ),
+
+
+
+# join on shipping lanes
+detections_and_shipping_lanes as (
+select
+detect_lat,
+detect_lon,
+scene_id,
+detect_timestamp,
+detect_id,
+-- ifnull(e.hours,0) AS cargo_tanker_hours_in_2018_per_50th_of_degree,
+-- ifnull(g.hours,0) AS cargo_tanker_hours_in_2018_per_20th_of_degree,
+ ifnull(h.hours,0) AS cargo_tanker_hours_in_2018_per_10th_of_degree
+from
+objects_table
+ left JOIN
+   `gfw_research_precursors.10km_cargotanker_2018_density_v20190523` h
+ ON
+   CAST(FLOOR(detect_lat*10) AS int64) = h.lat_bin
+   AND CAST(FLOOR(detect_lon*10) AS int64) = h.lon_bin
+      )
+      ,
+#
+#
+
+
+
+
+   top_matches as (
+  select * from scores_ranked
+  where row_number_detect_id = 1 and row_number_ssvid = 1),
+
+  second_matches_ranked as (
+     select *, row_number() over
+    (partition by detect_id order by score desc) row_number_detect_id_2nd,
+     row_number() over
+    (partition by ssvid,scene_id order by score desc) row_number_ssvid_2nd
+  from scores_ranked
+  where concat(ssvid,scene_id) not in (select concat(ssvid,scene_id) from top_matches)
+  and detect_id not in (select detect_id from top_matches)),
+
+  second_matches as (
+  select * from second_matches_ranked where row_number_detect_id_2nd = 1 and row_number_ssvid_2nd = 1),
+
+  third_matches_ranked as
+  (
+     select *, row_number() over
+    (partition by detect_id order by score desc) row_number_detect_id_3rd,
+     row_number() over
+    (partition by ssvid, scene_id order by score desc) row_number_ssvid_3rd
+  from second_matches_ranked
+  where
+  concat(ssvid,scene_id) not in (select concat(ssvid,scene_id)  from second_matches)
+  and detect_id not in (select detect_id from second_matches)
+  ),
+
+  third_matches as (
+ select * from third_matches_ranked where row_number_detect_id_3rd = 1 and row_number_ssvid_3rd = 1),
+
+ forth_matches_ranked as   (
+     select *, row_number() over
+    (partition by detect_id order by score desc) row_number_detect_id_4th,
+     row_number() over
+    (partition by ssvid,scene_id order by score desc) row_number_ssvid_4th
+  from third_matches_ranked
+  where
+  concat(ssvid,scene_id) not in (select concat(ssvid,scene_id) from third_matches)
+  and detect_id not in (select detect_id from third_matches)
+  ),
+
+  fourth_matches as (
+  select * from forth_matches_ranked where row_number_detect_id_4th = 1 and row_number_ssvid_4th = 1),
+
+  top_4_matches as (
+  select * from fourth_matches
+  union all
+  select *, null as row_number_detect_id_4th ,
+  null as row_number_ssvid_4th from third_matches
+  union all
+  select *,
+  null as row_number_detect_id_4th ,
+  null as row_number_ssvid_4th,
+  null as row_number_detect_id_3rd ,
+  null as row_number_ssvid_3rd
+  from second_matches
+  union all
+  select *,
+  null as row_number_detect_id_4th ,
+  null as row_number_ssvid_4th,
+  null as row_number_detect_id_3rd ,
+  null as row_number_ssvid_3rd ,
+  null as row_number_detect_id_2nd ,
+  null as row_number_ssvid_2nd
+  from top_matches
+  order by
+   row_number_detect_id,
+   row_number_ssvid),
+
+
+  joined_back_with_detections as (
+
+   select
+   b.scene_id scene_id,
+   b.detect_lon detect_lon,
+   b.detect_lat detect_lat,
+   b.detect_timestamp detect_timestamp,
+   * except(scene_id, score, detect_lon, detect_lat, detect_timestamp, ssvid_source,
+  row_number_detect_id,row_number_ssvid,row_number_detect_id_2nd,row_number_ssvid_2nd,
+  row_number_detect_id_3rd,row_number_ssvid_3rd,row_number_detect_id_4th,row_number_ssvid_4th),
+   ifnull(score,0) score
+   from top_4_matches a
+   full outer join detections_and_shipping_lanes b
+   using(detect_id))
+
+  select * from joined_back_with_detections# detections_and_shipping_lanes#top_4_matches

@@ -1,0 +1,27 @@
+##
+##
+##
+
+with
+delta_minutes as (select ssvid, scene_id, min_delta_minutes from {{ extrapolated_table }}),
+
+averaged_scores as (select ssvid, scene_id, detect_id, score as score_ave from {{ scored_ais_table }}),
+
+multiplied_scores as (select ssvid, scene_id, detect_id, score as score_mult from {{ scored_ais_table_mult }} ),
+
+
+combined_scores as (
+
+select ssvid, scene_id, detect_id, score_ave, score_mult from
+averaged_scores
+full outer join
+multiplied_scores
+using(ssvid, scene_id, detect_id))
+
+
+select ssvid, scene_id, detect_id, "AIS" source, if(abs(min_delta_minutes) < 10, score_ave, score_mult) score, min_delta_minutes
+from
+delta_minutes
+join
+combined_scores
+using(ssvid, scene_id)

@@ -1,0 +1,23 @@
+# Distance between each detection and the most likely location of each vessel
+with likely_location
+  as (
+select scene_id, scene_timestamp, label, ssvid, min_delta_minutes, min_lon, max_lon, min_lat, max_lat, likely_lon, likely_lat,
+lat_doppler_offset1, lon_doppler_offset1,lat_doppler_offset2, lon_doppler_offset2  from {{ extrapolated_table }}),
+
+sar_detections as (
+select scene_id, lon, lat, DetectionID as detect_id,  from
+{{ detections_table }})
+
+select * , "AIS" as source,
+    - cast ( st_distance(
+	         st_geogpoint(likely_lon + ifnull(lon_doppler_offset1,0)/2 + ifnull(lon_doppler_offset2,0)/2,
+                          likely_lat + ifnull(lat_doppler_offset1,0)/2 + ifnull(lat_doppler_offset2,0)/2),
+             st_geogpoint(lon, lat)) as int64) as score -- score is distance, and it is negative so that larger scores
+                                                         -- are better
+from
+likely_location
+join
+sar_detections
+using(scene_id)
+where lon between min_lon and max_lon
+and lat between min_lat and max_lat

@@ -1,0 +1,590 @@
+#StandardSql
+# extrapolate AIS Postitions. This produces a table that:
+#   1) Serves as in input to the table that will score AIS to SAR detection matches
+#   2) Identifies the most likely location of a vessel at the time of a SAR image, and
+#      whether that position is likely within the scene or not
+
+CREATE TEMP FUNCTION start_date() AS (DATE('{{ start_date }}'));
+CREATE TEMP FUNCTION end_date() AS (DATE('{{ end_date }}'));
+CREATE TEMP FUNCTION YYYYMMDD(d DATE) AS (
+  # Format a date as YYYYMMDD
+  # e.g. DATE('2018-01-01') => '20180101'
+  FORMAT_DATE('%Y%m%d',
+    d) );
+
+create temp function nautical_miles_per_degree() as (60.04);
+
+create temp function radians(x float64) as (
+  3.14159265359 * x / 180
+);
+
+create temp function degrees(x float64) as (
+    x * 180 / 3.14159265359
+);
+
+create temp function deglat2km() as (
+  111.195
+);
+
+create temp function meters2deg() as (
+   1/(deglat2km()*1000)
+);
+
+create temp function kilometers_per_nautical_mile() as (
+  1.852
+);
+
+create temp function meters_per_nautical_mile() as (
+  1852
+);
+
+CREATE TEMP FUNCTION weight_average_lons(lon float64, lon2 float64, timeto float64, timeto2 float64) AS
+(
+  # Make sure that lon < 180 and > -180, and that we average across the dateline
+  # appropriately
+case
+when lon - lon2 > 300 then ( (lon-360)*timeto2 + lon2*timeto)/(timeto+timeto2)
+when lon - lon2 < -300 then ( (lon+360)*timeto2 + lon2*timeto)/(timeto+timeto2)
+else (lon*timeto2 + lon2*timeto)/(timeto+timeto2) end );
+
+CREATE TEMP FUNCTION reasonable_lon(lon float64) AS
+(case when lon > 180 then lon - 360
+when lon < -180 then lon + 360
+else lon end
+);
+
+CREATE TEMP FUNCTION earth_radius_km(lat float64) as
+-- this is super overkill. You could just use the average
+-- radius of the earth. But I wanted to see if it made a difference.
+-- It matters if you want > 4 significant digits.
+-- But, once I made it, I didn't feel like deleting it.
+-- Equation taken from https://rechneronline.de/earth-radius/
+((
+select
+  --  R = √ [ (r1² * cos(B))² + (r2² * sin(B))² ] / [ (r1 * cos(B))² + (r2 * sin(B))² ]
+  pow(
+  ( pow(r1*r1 * cos(B),2) + pow(r2*r2 * sin(B),2) )
+  /
+  ( pow(r1 * cos(B),2) + pow(r2 * sin(B), 2) )
+  ,.5)
+    from
+    (select
+    6371.001 as r1,
+    6356.752 as r2,
+    Radians(lat) as B)
+    limit 1
+));
+
+with
+######################################
+-- Data sources
+######################################
+
+-- Satellite locations. Get the day before and after just in case there is a
+-- scene at the day boundary. This table has one value every second.
+sat_positions as (select time, lon, lat, altitude
+           from `satellite_positions_v20190208.sat_noradid_{{ norad_id }}_*`
+            where _table_suffix between YYYYMMDD(start_date()) and YYYYMMDD(end_date()) ),
+
+--sar detections
+scene_footprints as (
+SELECT
+distinct
+TIMESTAMP_ADD(ProductStartTime, INTERVAL
+cast(timestamp_diff(ProductStopTime, ProductStartTime,
+SECOND)/2 as int64) SECOND) scene_timestamp,
+scene_id,
+footprint
+FROM
+{{ detections_table }}
+),
+
+vessel_info_table as ({{ vessel_info_table }}),
+
+
+-- Table we are drawing AIS messages from
+ais_position_table as (
+  select *, _partitiontime date from
+  `{{ research_pipe }}`
+  where _partitiontime between timestamp(start_date()) and timestamp(end_date())
+),
+
+-- What is a good AIS segment? Find it here, in good_segs
+good_segs as ( select seg_id from
+           `{{ segs_table }}` where good_seg
+),
+
+-- #########################
+-- ##
+-- ## SAR subqueries
+-- ##
+-- #########################
+
+-- start position of the satellite for each scene at the scene timestamp
+start_pos as (
+select
+scene_id,
+timestamp_sub(scene_timestamp, INTERVAL 60 second) as start_time,
+lat as start_lat,
+lon as start_lon,
+altitude as start_altitude
+from sat_positions
+join scene_footprints
+on timestamp_sub(timestamp_trunc(scene_timestamp, second), INTERVAL 60 second) = time
+),
+
+-- end position of the satellite for each image
+end_pos as (
+select
+scene_id,
+timestamp_add(scene_timestamp, INTERVAL 60 second) as end_time,
+lat as end_lat,
+lon as end_lon,
+altitude as end_altitude
+from sat_positions
+join scene_footprints
+on timestamp_add(timestamp_trunc(scene_timestamp, second), INTERVAL 60 second) = time),
+
+-- calcuate the location, and altitude of the satellite
+deltas as (
+select
+(end_lat - start_lat) * deglat2km() as N_km,
+(end_lon - start_lon) * deglat2km() * cos( radians(end_lat/2 +start_lat/2) ) as E_km,
+end_lat/2 +start_lat/2 as avg_lat,
+start_lat,
+start_lon,
+end_lat,
+end_lon,
+start_altitude,
+end_altitude,
+start_time,
+end_time,
+scene_id
+from end_pos
+join
+start_pos
+using(scene_id)),
+
+-- Calculate the direction is the satellite traveling in each scene
+sat_directions as (
+select
+scene_id,
+degrees(ATAN2(E_Km,N_km)) sat_course, -- sat course, measured clockwise from due north, in degrees
+start_lat as sat_start_lat,
+start_lon as sat_start_lon,
+start_altitude,
+end_altitude,
+timestamp_diff(end_time, start_time, second) seconds,
+end_lat as sat_end_lat,
+end_lon as sat_end_lon,
+from deltas),
+
+-- Calculate speed of satellite for each scene
+-- speed of satellite varies a small ammount, so don't really need to calculate
+-- for each scene. But hey -- why not calculate it directly?
+sat_directions_with_speed as (
+select
+st_distance(st_geogpoint(sat_start_lon, sat_start_lat), st_geogpoint(sat_end_lon, sat_end_lat)) -- distance between points in meters
+* (earth_radius_km(sat_end_lat) + start_altitude/1000)/ earth_radius_km(sat_end_lat) -- multiply by a factor to account for satellite altitude
+/ seconds  -- make it meters per second
+*1/meters_per_nautical_mile() * 3600 -- 1 nautical mile / 1852 meters * 3600 seconds/ hour
+as satellite_knots,
+*
+from sat_directions),
+
+############################
+##
+## AIS subquery
+##
+###########################
+
+-- lag and lead AIS messages
+-- this also allows us to thin the messages for experiments to see
+-- how the algorithm does with fewer positions close to the scene in time
+ais_position_table_thinned as (
+select distinct seg_id, lat, lon, timestamp, course, speed_knots, ssvid, distance_from_shore_m, date, scene_id
+from ais_position_table
+cross join
+scene_footprints
+where abs(timestamp_diff(timestamp, scene_timestamp, second)) < 3600 * 12
+and abs(timestamp_diff(timestamp, scene_timestamp, second)) >= 3600*{{ min_hours_to_scene }}
+
+),
+
+
+
+
+ais_messages_lagged_led as (
+select
+  seg_id,
+  scene_id,
+  lat,
+  lon,
+  timestamp,
+  course,
+  speed_knots as speed,
+  ssvid,
+  distance_from_shore_m,
+  LEAD(timestamp,1) OVER (PARTITION BY seg_id, scene_id ORDER BY timestamp) timestamp_after,
+  LAG(timestamp,1) OVER (PARTITION BY seg_id, scene_id ORDER BY timestamp) timestamp_before,
+  date
+from
+  ais_position_table_thinned
+where
+  abs(lat) <= 90 and abs(lon) <= 180
+  and seg_id in (select seg_id from good_segs)
+  and speed_knots < 50
+  -- ignore the really fast vessels... most are noise
+  -- this could just ignore speeds of 102.3
+),
+
+-- join on image times to get before and after
+best_messages as (
+select
+  a.ssvid ssvid, lat, lon, speed, seg_id,
+  course, timestamp,
+  distance_from_shore_m,
+  timestamp_diff(scene_timestamp, timestamp, MILLISECOND) / (60*1000)  as delta_minutes,
+  a.scene_id scene_id,
+  scene_timestamp,
+  # The following two help a later join. Basically, we want to know if this position has a matching one after or before the image
+  #
+  (timestamp_before is not null and abs(timestamp_diff(scene_timestamp, timestamp_before, SECOND)) / 60.0 < 12*60 ) previous_exists,
+  (timestamp_after is not null and abs(timestamp_diff(scene_timestamp, timestamp_after, SECOND)) / 60.0 < 12*60 ) after_exists
+from
+  ais_messages_lagged_led a
+join
+  scene_footprints b
+on
+  abs(timestamp_diff(scene_timestamp, timestamp, SECOND)) / 60.0  < 12*60 # less than 12 hours
+  and st_distance(st_geogpoint(lon, lat), st_geogfromtext(footprint)) < 200*1852 -- within 200 nautical miles of the scene
+ -- Timestamps just before or after
+ -- Note that it is really tricky to consider the null value cases, and it makes things a mess later
+ and(
+       (timestamp <= scene_timestamp # timestamp is right before the image
+       AND timestamp_after > scene_timestamp )
+    or (timestamp <= scene_timestamp
+       and timestamp_after is null)
+    or (timestamp > scene_timestamp # timestamp is right after the image
+       AND timestamp_before <= scene_timestamp )
+    or (timestamp > scene_timestamp
+       and timestamp_before is null)
+  )
+ and a.scene_id = b.scene_id
+),
+
+## Get rid of times when there are two segments from one mmsi in best messages
+## In the future, this will be delt with
+segs_in_scenes as (
+    select scene_id, seg_id from (
+        select seg_id, scene_id, row_number() over (partition by scene_id, ssvid order by min_delta_minutes, avg_delta_minutes, rand()) row
+        from
+            (select scene_id, ssvid, seg_id, count(*) messages, min(abs(delta_minutes)) min_delta_minutes, avg(abs(delta_minutes)) avg_delta_minutes
+            from best_messages
+            group by scene_id, ssvid, seg_id)
+        )
+    where row = 1
+),
+
+
+best_messages_one_seg_per_vessel as (
+select * from best_messages
+join segs_in_scenes
+using(seg_id, scene_id)
+),
+
+####################################
+# Figure out adjustment to account for the friggn' doppler shift
+###################################
+--
+-- Get the extrapolated position of each vessel
+-- at the moment of the SAR image
+extrapolated_positions as (
+SELECT
+  lat + cos(radians(course)) -- x component
+  *speed*delta_minutes/60 -- nautical miles (knots * minutes / (60 minutes / hour) )
+  / nautical_miles_per_degree()  -- divided by the nautical miles per degree lat,
+  -- which is 60 nautical miles per degree (really it is 59.9, and varies by lat)
+  as lat_extrapolate,
+  reasonable_lon(
+     lon + sin(radians(course)) -- y component
+     *speed*delta_minutes/60 -- nautical miles (knots * minutes / (60 minutes / hour) )
+     /(nautical_miles_per_degree()*cos(radians(lat)))) -- divided by the nautical miles per degree lon,
+  -- which is 60 times the cos of the lat (really it is 59.9, and varies by lat)
+  as lon_extrapolate,
+  1000 / greatest(1.0, ABS(delta_minutes)) as scale, # scale is the number of pixels per km
+  # for the raster lookup that we will use.
+  # As delta minutes gets bigger, the pixels per km gets smaller, so each pixel covers more area
+  *
+FROM
+  best_messages_one_seg_per_vessel),
+
+-- Get distance from the likely position of the vessel to the satellite,
+-- and the speed of the vessel perpendicular to the satellite.
+extrapolated_positions_compared_to_satellite as (
+select
+   *,
+   speed * sin(radians( course - sat_course)) as vessel_speed_perpendicular_to_sat,
+   st_distance(safe.st_geogpoint(lon_extrapolate, lat_extrapolate), -- likely location of vessel
+               ST_MAKELINE( safe.ST_GEOGPOINT(sat_start_lon, sat_start_lat), (safe.ST_GEOGPOINT(sat_end_lon, sat_end_lat) ) ) ) -- line of satellite
+               / meters_per_nautical_mile() -- convert from meters to nautical miles, because
+               as vessel_distance_to_sat_nm,
+  cos(radians(course)) as cosdegrees,
+  sin(radians(course)) as sindegrees,
+from
+  extrapolated_positions
+join
+  sat_directions_with_speed
+using(scene_id)
+),
+
+-- using satellite speed, vessel speed perpendicular to satellite direction of travel,
+-- and the distance of the vessel to the satellite, calculate the distance the vessel
+-- will be offset in the direction of the satellite is traveling.
+extrapolated_positions_adjust_formula as (
+select
+ *,
+# 1000/scale gives the meters per pixel for the lookup table
+# we are going to extrapolate by 500 pixels, so 500*1000/scale = meters of half the width
+# of the raster we are using for a looup table.
+(cosdegrees + sindegrees) * 500*1000/scale*meters2deg() lat11, # actual order here might be wrong...
+(cosdegrees - sindegrees) * 500*1000/scale*meters2deg() lat12,
+
+# when farther from equator, cos(lat_extrapolate) will be <1, so the
+# actual distance in degrees lon will be bigger, so divide by cos(lat)
+(cosdegrees + sindegrees) * 500*1000/scale*meters2deg() / cos(radians(lat_extrapolate))  lon11, # actual order here might be wrong...
+(cosdegrees - sindegrees) * 500*1000/scale*meters2deg() / cos(radians(lat_extrapolate))  lon12,
+ vessel_speed_perpendicular_to_sat * sin(atan2(vessel_distance_to_sat_nm,start_altitude/ meters_per_nautical_mile())) -- multiply by sin(look angle)
+ / satellite_knots
+ * pow( ( pow(vessel_distance_to_sat_nm,2) + pow(start_altitude,2)/pow(1852,2) ) , .5)
+  -- divide by 1852 to convert meters to nautical miles,
+  -- then use pathangerean theorm to get the approximate distance to the satellite in
+  -- nautical miles.
+  as adjusted_nautical_miles_parallel_to_sat,
+  # The look angle is the angle from vertical to the object, from the satellite
+  degrees(atan2(vessel_distance_to_sat_nm,start_altitude/ meters_per_nautical_mile())) look_angle
+from
+  extrapolated_positions_compared_to_satellite
+),
+
+-- Adjust each lat and lon by the doppler shift. Note the subtraction. If a vessel is traveling
+-- perpendicular to the satellite's motion, going away from the satellite, the vessel will
+-- appear offset parallel to the satellites motion opposite the direction the vessel is traveling.
+-- Believe me! It works!
+best_messages_adjusted as (
+select
+  *,
+  - adjusted_nautical_miles_parallel_to_sat * cos(radians(sat_course))/60 lat_doppler_offset, -- 60 nautical miles per degree
+  - adjusted_nautical_miles_parallel_to_sat * sin(radians(sat_course))/(60 * cos(radians(lat))) lon_doppler_offset, -- 60 nautical miles * cos(lat) per degree
+  lat_extrapolate - adjusted_nautical_miles_parallel_to_sat * cos(radians(sat_course))/60 lat_extrapolate_adjusted, -- 60 nautical miles per degree
+  lon_extrapolate - adjusted_nautical_miles_parallel_to_sat * sin(radians(sat_course))/(60 * cos(radians(lat))) lon_extrapolate_adjusted, -- 60 nautical miles * cos(lat) per degree
+from
+  extrapolated_positions_adjust_formula
+),
+
+with_max_min_latlon as (
+select
+scene_id,
+ssvid,
+seg_id,
+lat,
+lon,
+course,
+timestamp,
+scene_timestamp,
+lat_doppler_offset,
+lon_doppler_offset,
+lat_extrapolate,
+lon_extrapolate,
+lat_extrapolate_adjusted,
+lon_extrapolate_adjusted,
+sat_course,
+look_angle,
+speed,
+delta_minutes,
+# sindegrees,
+# cosdegrees,
+# lat11,
+# lat12,
+# lon11,
+# lon12,
+greatest(lat11,lat12,-lat11,-lat12) + lat_extrapolate_adjusted as max_lat_raster_lookup,
+least(   lat11,lat12,-lat11,-lat12) + lat_extrapolate_adjusted as min_lat_raster_lookup,
+greatest(lon11,lon12,-lon11,-lon12) + lon_extrapolate_adjusted as max_lon_raster_lookup,
+least(   lon11,lon12,-lon11,-lon12) + lon_extrapolate_adjusted as min_lon_raster_lookup,
+previous_exists,
+after_exists,
+scale
+from best_messages_adjusted),
+
+before_after_joined as (
+select
+scene_id,
+ssvid,
+seg_id,
+scene_timestamp,
+sat_course,
+a.lat lat1,
+a.lon lon1,
+a.course course1,
+a.timestamp timestamp1,
+a.lat_doppler_offset lat_doppler_offset1,
+a.lon_doppler_offset lon_doppler_offset1,
+a.lat_extrapolate lat_extrapolate1,
+a.lon_extrapolate lon_extrapolate1,
+st_geogpoint(a.lon_extrapolate, a.lat_extrapolate) extrapolate_point1,
+a.speed speed1,
+a.delta_minutes delta_minutes1,
+a.max_lat_raster_lookup max_lat_raster_lookup1,
+a.min_lat_raster_lookup min_lat_raster_lookup1,
+a.max_lon_raster_lookup max_lon_raster_lookup1,
+a.min_lon_raster_lookup min_lon_raster_lookup1,
+a.scale scale1,
+b.lat lat2,
+b.lon lon2,
+b.course course2,
+b.timestamp timestamp2,
+b.lat_doppler_offset lat_doppler_offset2,
+b.lon_doppler_offset lon_doppler_offset2,
+b.lat_extrapolate lat_extrapolate2,
+b.lon_extrapolate lon_extrapolate2,
+st_geogpoint(b.lon_extrapolate, b.lat_extrapolate) extrapolate_point2,
+b.speed speed2,
+b.delta_minutes delta_minutes2,
+b.max_lat_raster_lookup max_lat_raster_lookup2,
+b.min_lat_raster_lookup min_lat_raster_lookup2,
+b.max_lon_raster_lookup max_lon_raster_lookup2,
+b.min_lon_raster_lookup min_lon_raster_lookup2,
+b.scale scale2,
+(a.lat*a.delta_minutes + b.lat*abs(b.delta_minutes))/(a.delta_minutes+abs(b.delta_minutes)) lat_center,
+reasonable_lon(weight_average_lons(a.lon, b.lon, a.delta_minutes,abs(b.delta_minutes))) lon_center,
+a.look_angle look_angle1,
+b.look_angle look_angle2
+from
+(select * from with_max_min_latlon where delta_minutes >=0) a
+full outer join
+(select * from with_max_min_latlon where delta_minutes <0) b
+using(scene_id,scene_id,
+ssvid,
+seg_id,
+scene_timestamp,
+sat_course)
+),
+
+most_likely_location as (
+select
+*,
+# The exact logic here could be changed a bit, as it
+# basically uses the extrapolated position between the points
+# if they the time is roughly in between the two points
+case
+when delta_minutes1 is null then extrapolate_point2
+when delta_minutes2 is null then extrapolate_point1
+when delta_minutes1 / (delta_minutes1 + abs(delta_minutes2)) between .25 and .75
+then st_geogpoint(lon_center, lat_center)
+else if(delta_minutes1 < abs(delta_minutes2), extrapolate_point1, extrapolate_point2 )
+end as likely_location
+from
+before_after_joined
+),
+
+with_contains as (
+select *,
+    st_contains(footprint_geo, likely_location ) within_footprint,
+    st_contains(footprint_geo, likely_location )
+    and not ST_DWITHIN(ST_BOUNDARY(footprint_geo),
+                         likely_location, 5000) within_footprint_5km,
+    -- is it more than 1km within the scene?
+    st_contains(footprint_geo, likely_location )
+    and not ST_DWITHIN(ST_BOUNDARY(footprint_geo),
+                         likely_location, 1000) within_footprint_1km,
+ from
+most_likely_location
+join(select ST_GeogFromText(footprint) footprint_geo, scene_id from scene_footprints)
+using(scene_id)
+where
+-- This looks at whether the area of the likely lookup table interesects with the scene. it is verbose,
+-- but it just makes a polygon with the bounding box max and min lat and lon and sees if that intersects
+-- with the scene footprint
+(ST_INTERSECTS ( ST_MAKEPOLYGON(ST_MAKELINE([
+                                   ST_GEOGPOINT(max_lon_raster_lookup1 + .005, max_lat_raster_lookup1 + .005),
+                                   ST_GEOGPOINT(max_lon_raster_lookup1 + .005, min_lat_raster_lookup1 - .005),
+                                   ST_GEOGPOINT(min_lon_raster_lookup1 - .005, min_lat_raster_lookup1 - .005),
+                                   ST_GEOGPOINT(min_lon_raster_lookup1 - .005, max_lat_raster_lookup1 + .005),
+                                   ST_GEOGPOINT(max_lon_raster_lookup1 + .005, max_lat_raster_lookup1 + .005)
+                                   ]) ),
+
+                footprint_geo) or max_lon_raster_lookup1 is null)
+
+and
+(ST_INTERSECTS ( ST_MAKEPOLYGON(ST_MAKELINE([
+                                   ST_GEOGPOINT(max_lon_raster_lookup2 + .005, max_lat_raster_lookup2 + .005),
+                                   ST_GEOGPOINT(max_lon_raster_lookup2 + .005, min_lat_raster_lookup2 - .005),
+                                   ST_GEOGPOINT(min_lon_raster_lookup2 - .005, min_lat_raster_lookup2 - .005),
+                                   ST_GEOGPOINT(min_lon_raster_lookup2 - .005, max_lat_raster_lookup2 + .005),
+                                   ST_GEOGPOINT(max_lon_raster_lookup2 + .005, max_lat_raster_lookup2 + .005)
+                                   ]) ),
+
+                footprint_geo) or max_lon_raster_lookup2 is null)
+)
+
+## And put it together...
+select
+scene_id,
+label,
+ssvid,
+seg_id,
+"AIS" as source,
+scene_timestamp,
+greatest(ifnull(scale1,0), ifnull(scale2,0)) as max_scale,
+least(ifnull(delta_minutes1,1e10), ifnull(abs(delta_minutes2),1e10)) as min_delta_minutes,
+greatest(ifnull(min_lon_raster_lookup1,-1e10), ifnull(min_lon_raster_lookup2,-1e10)) as min_lon,
+least(ifnull(max_lon_raster_lookup1,1e10), ifnull(max_lon_raster_lookup2,1e10)) as max_lon,
+greatest(ifnull(min_lat_raster_lookup1,-1e10), ifnull(min_lat_raster_lookup2,-1e10)) as min_lat,
+least(ifnull(max_lat_raster_lookup1,1e10), ifnull(max_lat_raster_lookup2,1e10)) as max_lat,
+scale1 is null or scale2 is null as is_single,
+st_x(likely_location) likely_lon,
+st_y(likely_location) likely_lat,
+lat1,
+lon1,
+course1,
+timestamp1,
+lat_doppler_offset1,
+lon_doppler_offset1,
+lat_extrapolate1,
+lon_extrapolate1,
+speed1,
+delta_minutes1,
+max_lat_raster_lookup1,
+min_lat_raster_lookup1,
+max_lon_raster_lookup1,
+min_lon_raster_lookup1,
+scale1,
+lat2,
+lon2,
+course2,
+timestamp2,
+lat_doppler_offset2,
+lon_doppler_offset2,
+lat_extrapolate2,
+lon_extrapolate2,
+speed2,
+delta_minutes2,
+max_lat_raster_lookup2,
+min_lat_raster_lookup2,
+max_lon_raster_lookup2,
+min_lon_raster_lookup2,
+scale2,
+lat_center,
+lon_center,
+within_footprint,
+within_footprint_5km,
+within_footprint_1km,
+look_angle1,
+look_angle2,
+sat_course,
+from
+with_contains
+join
+vessel_info_table
+using(ssvid)
