@@ -2,11 +2,10 @@
 A Repo for the paper `Revealing the Global Longline Fleet with SAR`
 
 <!-- #region -->
-This repo contains the following analyses in support of the report on dark targets. It has the following folders with the following contents:
+This repo contains the code for the methods and analysis in support of the paper Revealing the Global Longline Fleet with SAR. It has the following folders with the following contents:
 
 ### 01_Acquisitions 
 The data obtained from KSAT on SAR detections and scenes, and the code to process the files they provided to turn into csvs and BigQuery tables.
-
 
 ### 02_Evaluation_of_Fishing_Activity 
 This includes ... 
