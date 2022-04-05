@@ -207,7 +207,6 @@ compute_L.plot_fits()
 # compute_L.plot_fits()
 # compute_L = LComputerIQD(df_m.gfw_length.values, df_m.sar_length.values)
 # compute_L.plot_fits()
-
 # ##### Infer Lengths
 
 # +
