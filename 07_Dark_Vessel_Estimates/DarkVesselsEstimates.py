@@ -7,9 +7,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.6.0
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -32,7 +32,7 @@ import seaborn as sns
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from numpy import newaxis
-
+from matplotlib.patches import Polygon
 plt.rcParams["axes.grid"] = False
 import pickle
 import warnings
@@ -200,9 +200,7 @@ print(f"total vessels <{max_size}m:     {len(df_small)}")
 # this is used to plot the average detection rate.
 x_bin5, y_bin5, x_bin5std, y_bin5std = sarm.bin_data(df_r, width=10, median=False)
 # # Minimization Approach
-
 # ## Compute the Matrix relating GFW to SAR Lengths
-
 compute_L = LComputer(df_m.gfw_length.values, df_m.sar_length.values)
 compute_L.plot_fits()
 # compute_L = LComputerQuartiles(df_m.gfw_length.values, df_m.sar_length.values)
@@ -363,6 +361,8 @@ plt.clf()
 
 ais_distribution["all"] = x_all, y_all * len(d2), x_sar, y_sar * len(dd)
 # -
+
+
 # # Figure 3
 
 # +
@@ -675,7 +675,7 @@ for i, region in enumerate(["indian", "pacific"]):
     ax.text(
         vessel_xlim[1] * 0.4,
         vessel_ylim[1] * 0.2,
-        f"{len(d2)} vessles\nbroadcasting AIS",
+        f"{len(d2)} vessels\nbroadcasting AIS",
     )
     ax.set_ylim(vessel_ylim)
     ax.set_xlim(vessel_xlim)
@@ -731,7 +731,7 @@ for i, region in enumerate(["indian", "pacific"]):
     ax.text(
         vessel_xlim[1] * 0.3,
         dark_ylim[1] * 0.6,
-        f"{num_all_sar:.0f} $\pm$ {.175*num_all_sar:.0f} vessles\n not broadcasting AIS",
+        f"{num_all_sar:.0f} $\pm$ {.175*num_all_sar:.0f} vessels\n not broadcasting AIS",
     )
     ax.legend(ncols=1, loc="upper left", bbox_to_anchor=(legend_x, 0.4))
 
@@ -752,7 +752,7 @@ for i, region in enumerate(["indian", "pacific"]):
     ax.legend(ncols=1, loc="upper left", bbox_to_anchor=(legend_x, 1))
     ax.set_ylim(dark_ylim)
 axs.format(toplabels=("Indian", "Pacific"))
-# plt.savefig("figure4.png", dpi=300, bbox_inches="tight")
+plt.savefig("figure4.png", dpi=300, bbox_inches="tight")
 # -
 # ## See How Well it Does
 #
@@ -872,8 +872,6 @@ plt.ylabel("number of simulations")
 plt.xlabel("error (number of vessels)")
 
 # +
-from matplotlib.patches import Polygon
-
 resids = pred - act
 resid_width = 50
 # We want to treat actual vessels as a function of estimated vessels
@@ -887,8 +885,12 @@ w2 = resid_width / 2
 cis = []
 for lc in locs:
     rs = resids[(pred > lc - w2) & (pred < lc + w2)]
-    #     cis.append(np.quantile(rs, [0.025, 0.5, 0.975]))
-    cis.append(np.quantile(-rs, [0.025, 0.5, 0.975]))
+    if not rs.any():
+        cis.append(np.array([0, 0, 0]))
+    else:
+        np.quantile(rs, [0.025, 0.5, 0.975])
+#     cis.append(np.quantile(rs, [0.025, 0.5, 0.975]))
+        cis.append(np.quantile(-rs, [0.025, 0.5, 0.975]))
 
 
 plt.figure(figsize=(6, 4))

@@ -17,7 +17,9 @@ from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib.font_manager as fm
 import numpy as np
 import pandas as pd
-import proplot as pplt
+
+# import proplot as pplt
+
 import pyseas
 import pyseas.cm
 import pyseas.contrib as psc

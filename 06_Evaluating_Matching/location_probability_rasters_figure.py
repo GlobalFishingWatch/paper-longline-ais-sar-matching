@@ -2,30 +2,23 @@
 # # This notebook contains the code to generate the vessel class location probability examples for supplemental figures S1 and S2
 #
 # %%
-# import math
-# # %matplotlib inline
-# import os
+import math
+# %matplotlib inline
+import os
+import matplotlib as mpl
+import matplotlib.colors as mpcolors
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
+import matplotlib.ticker
+import numpy as np
+import pandas as pd
+import pyseas.cm
+import pyseas.contrib as psc
+import pyseas.maps as psm
 
-# import matplotlib as mpl
-# import matplotlib.colors as mpcolors
-# # import matplotlib.font_manager as fm
-# import matplotlib.gridspec as gridspec
-# import matplotlib.pyplot as plt
-# import matplotlib.ticker
-
-# import numpy as np
-# import pandas as pd
-# import pyseas.cm
-# import pyseas.contrib as psc
-# import pyseas.maps as psm
-# # from matplotlib.ticker import FormatStrFormatter
-# # from matplotlib_scalebar.scalebar import ScaleBar
-# # from mpl_toolkits.axes_grid1 import make_axes_locatable
-# # from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
-
-# mpl.rcParams["axes.spines.right"] = False
-# mpl.rcParams["axes.spines.top"] = False
-# import cartopy.crs as ccrs
+mpl.rcParams["axes.spines.right"] = False
+mpl.rcParams["axes.spines.top"] = False
+import cartopy.crs as ccrs
 
 import ais_sar_matching.sar_analysis as sarm
 
@@ -109,6 +102,7 @@ df_info = sarm.gbq(q)
 # ## Supplemental vessel location probability raster figures
 
 # %%
+plt.rcParams["axes.grid"] = False
 fig2 = plt.figure(figsize=(13, 9), constrained_layout=True)
 fig2.set_facecolor("white")
 
@@ -275,7 +269,7 @@ vessels = [
 cols = ["{}".format(i) for i in vessels]
 
 pad = 24
-for ax, col in zip(fig3_test.axes, cols):
+for ax, col in zip(fig3_final.axes, cols):
     ax.annotate(
         col,
         xy=(0.5, 1.15),
@@ -292,3 +286,5 @@ for ax, col in zip(fig3_test.axes, cols):
 # %%
 fig3_final
 # fig3_final.savefig("Fig3.png",dpi=300,bbox_inches='tight')
+
+# %%
