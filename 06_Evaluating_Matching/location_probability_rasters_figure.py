@@ -1,30 +1,31 @@
 # %% [markdown]
 # # This notebook contains the code to generate the vessel class location probability examples for supplemental figures S1 and S2
-
-import math
-# %matplotlib inline
-import os
-
-import matplotlib as mpl
-import matplotlib.colors as mpcolors
-import matplotlib.font_manager as fm
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import matplotlib.ticker
+#
 # %%
-import numpy as np
-import pandas as pd
-import pyseas.cm
-import pyseas.contrib as psc
-import pyseas.maps as psm
-from matplotlib.ticker import FormatStrFormatter
-from matplotlib_scalebar.scalebar import ScaleBar
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+# import math
+# # %matplotlib inline
+# import os
 
-mpl.rcParams["axes.spines.right"] = False
-mpl.rcParams["axes.spines.top"] = False
-import cartopy.crs as ccrs
+# import matplotlib as mpl
+# import matplotlib.colors as mpcolors
+# # import matplotlib.font_manager as fm
+# import matplotlib.gridspec as gridspec
+# import matplotlib.pyplot as plt
+# import matplotlib.ticker
+
+# import numpy as np
+# import pandas as pd
+# import pyseas.cm
+# import pyseas.contrib as psc
+# import pyseas.maps as psm
+# # from matplotlib.ticker import FormatStrFormatter
+# # from matplotlib_scalebar.scalebar import ScaleBar
+# # from mpl_toolkits.axes_grid1 import make_axes_locatable
+# # from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+
+# mpl.rcParams["axes.spines.right"] = False
+# mpl.rcParams["axes.spines.top"] = False
+# import cartopy.crs as ccrs
 
 import ais_sar_matching.sar_analysis as sarm
 
@@ -121,6 +122,7 @@ ax3 = fig2.add_subplot(gs[0, 2])
 ax4 = fig2.add_subplot(gs[1, 0:])
 
 sarm.plot_ssvid_scene(
+    fig2,
     ax1,
     ax2,
     ax3,

@@ -10,6 +10,11 @@ import matplotlib.colors as mcol
 import matplotlib.colors as mpcolors
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib_scalebar.scalebar import ScaleBar
+import matplotlib.font_manager as fm
 import numpy as np
 import pandas as pd
 import proplot as pplt
@@ -31,6 +36,7 @@ from scipy.special import erfinv, gammaln
 from scipy.stats import binom, gaussian_kde, lognorm, poisson
 from shapely import wkt
 from sklearn.linear_model import LinearRegression
+from itertools import cycle
 
 
 def gbq(q):
@@ -307,7 +313,7 @@ def calculate_residuals(model, features, label):
     return df_results
 
 
-def plot_track_speed(df):
+def plot_track_speed_year(df):
     """
     Function to plot vessels track points colored by speed,
     with a histogram of speed
@@ -496,7 +502,7 @@ def plot_double_track_speed(df):
             print("\n")
 
 
-def plot_ssvid_scene(ax1, ax2, ax3, ax4, ssvid, scene_id, df):
+def plot_ssvid_scene(fig, ax1, ax2, ax3, ax4, ssvid, scene_id, df):
     plt.rcParams["axes.grid"] = False
     di = df[(df.ssvid == ssvid) & (df.scene_id == scene_id)]
 
@@ -666,7 +672,7 @@ def plot_ssvid_scene(ax1, ax2, ax3, ax4, ssvid, scene_id, df):
 
     divider = make_axes_locatable(ax3)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    cbar = fig2.colorbar(
+    cbar = fig.colorbar(
         im, cax=cax, orientation="vertical", fraction=0.15, aspect=40, pad=0.04
     )
 

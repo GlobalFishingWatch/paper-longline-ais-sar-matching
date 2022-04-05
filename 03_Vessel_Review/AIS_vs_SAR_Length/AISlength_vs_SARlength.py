@@ -1,13 +1,14 @@
 # %% [markdown]
 # # Get relationship between vessel length from AIS and SAR
-
-import math
-from random import random
-
-import matplotlib.pyplot as plt
-import numpy as np
+#
+# import math
+# from random import random
+#
+# import matplotlib.pyplot as plt
+# import numpy as np
 # %%
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
@@ -17,6 +18,7 @@ from scipy.optimize import curve_fit
 from scipy.stats import norm
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import r2_score
+import matplotlib.pyplot as plt
 
 import ais_sar_matching.sar_analysis as sarm
 
@@ -318,8 +320,6 @@ B
 
 # %%
 d.head()
-
-# %%
 
 # %%
 df.head()

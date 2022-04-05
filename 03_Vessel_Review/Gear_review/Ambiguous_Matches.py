@@ -15,24 +15,25 @@
 
 # %% [markdown]
 # # Review ambigous matches - AIS that could have matched to multiple SAR detections, or SAR to multiple vessels broadcasting AIS.
-
-from datetime import datetime, timedelta
-
-import matplotlib.cm as cm
-import matplotlib.colors as mcol
-import matplotlib.gridspec as gridspec
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-import pyseas
-import pyseas.cm
-import pyseas.maps
-import pyseas.styles
-from matplotlib import colorbar, colors
-from pyseas import maps, styles
+#
+# from datetime import datetime, timedelta
+#
+# import matplotlib.cm as cm
+# import matplotlib.colors as mcol
+# import matplotlib.gridspec as gridspec
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import pandas as pd
+# import pyseas
+# import pyseas.cm
+# import pyseas.maps
+# import pyseas.styles
+# from matplotlib import colorbar, colors
+# from pyseas import maps, styles
 # %%
 from pyseas.contrib import plot_tracks
-
+from datetime import date
+import matplotlib.pyplot as plt
 import ais_sar_matching.sar_analysis as sarm
 
 # %matplotlib inline
@@ -69,7 +70,10 @@ order by timestamp
 df = sarm.gbq(q)
 
 # %%
-sarm.plot_track_speed(df)
+df
+
+# %%
+sarm.plot_track_speed_year(df)
 
 # %%
 q = """with
@@ -106,8 +110,8 @@ df = sarm.gbq(q)
 sarm.plot_double_track_speed(df)
 
 # %%
-mind = datetime(2019, 8, 15)
-maxd = datetime(2020, 1, 15)
+mind = date(2019, 8, 15)
+maxd = date(2020, 1, 15)
 
 miny = 54
 maxy = 59
@@ -167,8 +171,8 @@ order by timestamp
 df = sarm.gbq(q)
 
 # %%
-mind = datetime(2019, 8, 15)
-maxd = datetime(2020, 1, 15)
+mind = date(2019, 8, 15)
+maxd = date(2020, 1, 15)
 
 miny = 54
 maxy = 65
@@ -198,8 +202,8 @@ plt.xlim(mind, maxd)
 plt.show()
 
 # %%
-mind = datetime(2019, 11, 15)
-maxd = datetime(2019, 12, 1)
+mind = date(2019, 11, 15)
+maxd = date(2019, 12, 1)
 
 plt.figure(figsize=(20, 3))
 for ssvid in df.ssvid.unique():
@@ -259,8 +263,8 @@ order by timestamp
 df = sarm.gbq(q)
 
 # %%
-mind = datetime(2019, 8, 15)
-maxd = datetime(2020, 1, 15)
+mind = date(2019, 8, 15)
+maxd = date(2020, 1, 15)
 
 miny = 54
 maxy = 65
@@ -288,7 +292,3 @@ plt.xlim(mind, maxd)
 # plt.ylim(minx,maxx)
 
 plt.show()
-
-# %%
-
-# %%

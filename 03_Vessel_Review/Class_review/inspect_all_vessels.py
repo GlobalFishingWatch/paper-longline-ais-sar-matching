@@ -82,6 +82,8 @@ df_i = sarm.gbq(q)
 
 df = df.merge(df_i, on="ssvid", how="left").fillna("None")
 
+df
+
 sarm.plot_track_speed(df)
 
 
@@ -491,11 +493,8 @@ AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
 
 AOI_tracks.head()
 
-416002477
-
 AOI_tracks.ssvid.nunique()
 
-AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
 sarm.plot_track_speed(AOI_tracks)
 
 # +
@@ -756,8 +755,9 @@ df.at[df.ssvid == "367753890", "final_vessel_class"] = "passenger"
 
 df[df.ssvid == "367753890"]
 
-df[["ssvid", "final_vessel_class"]].to_gbq(
-    "proj_walmart_dark_targets.all_mmsi_vessel_class",
-    project_id="world-fishing-827",
-    if_exists="replace",
-)
+# +
+# df[["ssvid", "final_vessel_class"]].to_gbq(
+#     "proj_walmart_dark_targets.all_mmsi_vessel_class",
+#     project_id="world-fishing-827",
+#     if_exists="replace",
+# )
