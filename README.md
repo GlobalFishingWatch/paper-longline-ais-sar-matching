@@ -2,7 +2,7 @@
 A Repo for the paper `Revealing the Global Longline Fleet with SAR`
 
 <!-- #region -->
-This repo contains the code for the methods and analysis in support of the paper Revealing the Global Longline Fleet with SAR. It has the following folders with the following contents:
+This repo contains the methods and analysis in support of the paper Revealing the Global Longline Fleet with SAR. It has the following folders with the following contents:
 
 ### 01_Acquisitions 
 The data obtained from KSAT on SAR detections and scenes, and the code to process the files they provided to turn into csvs and BigQuery tables.
