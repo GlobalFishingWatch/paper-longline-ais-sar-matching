@@ -14,6 +14,7 @@
 # import numpy as np
 # import pandas as pd
 # %%
+import math
 import pyseas
 import pyseas.cm
 import pyseas.maps as psm
@@ -23,6 +24,8 @@ import seaborn as sns
 import shapely
 import cartopy.crs as ccrs
 import numpy as np
+import pandas as pd
+import geopandas as gpd
 from cartopy import config
 from matplotlib import colorbar, colors
 import matplotlib.patches as mpatches
@@ -32,8 +35,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from shapely import wkt
 from six.moves import zip
+from itertools import cycle
 
-import ais_sar_matching.sar_analysis as sarm
+# import ais_sar_matching.sar_analysis as sarm
 
 # psm.use(psm.styles.chart_style)
 
@@ -48,30 +52,57 @@ orange = "#f68d4b"
 gold = "#f8ba47"
 green = "#ebe55d"
 # %%
+def get_footprint(detection_table):
+
+    q = """
+    select distinct(footprint)
+    from `{detection_table}`
+    """
+
+    df_footprint = pd.read_gbq(
+        q.format(detection_table=detection_table),
+        dialect="standard",
+    )
+
+    df_footprint = gpd.GeoDataFrame(df_footprint)
+    df_footprint["geometry"] = df_footprint.footprint.apply(wkt.loads)
+    overpasses = shapely.ops.cascaded_union(df_footprint.geometry.values)
+    return df_footprint, overpasses
+
+
+# %%
 # Get the footprints of the acquisitions for Madagascar and French Polynesia
 # madacascar
 detection_table_mad = (
-    "world-fishing-827.proj_walmart_dark_targets.walmart_ksat_detections_ind_v20200110"
+    "global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_ind_v20200110"
 )
-mad_footprints = sarm.get_footprint(detection_table_mad)
+mad_footprints = get_footprint(detection_table_mad)
 
 
 # french polynesia
 detection_table_fp = (
-    "world-fishing-827.proj_walmart_dark_targets.walmart_ksat_detections_fp_v20200117"
+    "global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_fp_v20200117"
 )
-fp_footprints = sarm.get_footprint(detection_table_fp)
+fp_footprints = get_footprint(detection_table_fp)
+
 
 # %%
 # Get the area of the union of each acquisition within each region
 
-print(int(sarm.get_area_shape(fp_footprints[1])), "sq km near French Polynesia")
-print(int(sarm.get_area_shape(mad_footprints[1])), "sq km near Madagascar")
+def get_area_shape(sh):
+    """pass a shapely polygon or multipolygon, get area in square km"""
+    b = sh.bounds
+    avg_lat = b[1] / 2 + b[3] / 2
+    tot_area = sh.area * 111 * 111 * math.cos(avg_lat * 3.1416 / 180)
+    return tot_area
+
+print(int(get_area_shape(fp_footprints[1])), "sq km near French Polynesia")
+print(int(get_area_shape(mad_footprints[1])), "sq km near Madagascar")
 
 # %%
 # Sum of area of individual footprints within each region.
-mad_footprints[0]["area"] = mad_footprints[0].geometry.apply(sarm.get_area_shape)
-fp_footprints[0]["area"] = fp_footprints[0].geometry.apply(sarm.get_area_shape)
+mad_footprints[0]["area"] = mad_footprints[0].geometry.apply(get_area_shape)
+fp_footprints[0]["area"] = fp_footprints[0].geometry.apply(get_area_shape)
 
 print(
     "French Polynesia total area sq km:",
@@ -116,18 +147,6 @@ and on_fishing_list_best is not null
 and best.best_vessel_class != "gear"
 and best.best_vessel_class is not null),
 
-risky_longlines as (
-SELECT
-  cast(mmsi as string) ssvid
-FROM
-proj_walmart_dark_targets.risk_predictions_v20201104
-join
-ais_longlines
-on cast(mmsi as string) = ssvid
-WHERE
-  class = 1
-  and year = 2018
-),
 
 good_segs as (select seg_id from `gfw_research.pipe_v20201001_segs`
                   where good_seg and not overlapping_and_short ),
@@ -149,16 +168,8 @@ using(ssvid)
 where _partitiontime between timestamp("2019-08-01")
 and timestamp("2020-01-31")
 and seg_id in (select seg_id from good_segs)
-),
+)
 
-all_longline_fishing_andRisky as (
-select *,
-risky_longlines.ssvid is not null as is_risky
-from
-ais_positions
-left join
-risky_longlines
-using(ssvid))
 
 select
 floor(lat*4) lat_bin,
@@ -166,17 +177,16 @@ floor(lon*4) lon_bin,
 sum(hours) hours,
 sum(if(nnet_score>.5,hours,0)) fishing_hours,
 is_drifting_longline,
-is_risky,
 on_fishing_list_best
-from all_longline_fishing_andRisky
+from ais_positions
 group by
 lat_bin,
 lon_bin,
 is_drifting_longline,
-on_fishing_list_best,is_risky
+on_fishing_list_best
 """
 
-df_ais = sarm.gbq(q)
+df_ais = pd.read_gbq(q)
 
 # %%
 # Create longline fishing raster for plotting
@@ -186,121 +196,23 @@ fishing_longlines = pyseas.maps.rasters.df2raster(
 )
 
 # %%
-# Madagascar Detections and matches including manually identified and eezs
-q = """with ksat_matched as
-(SELECT ssvid,
-detect_id
-FROM `world-fishing-827.proj_walmart_dark_targets.walmart_ksat_matches_top_nogear_ind_v20200110` ),
+q = '''SELECT
+detect_lon as lon,
+detect_lat as lat, 
+score > 2.5e-5  matched,
+ifnull(is_fishing,false) on_fishing_list_best,
+region
+ FROM `global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427` 
 
-vessels as
-(select best.best_vessel_class,
-on_fishing_list_best,
-best.best_length_m,
-registry_info.best_known_flag,
-ssvid from `gfw_research.vi_ssvid_v20210301`),
+where detect_id is not null'''
 
-eezs as (
-select
-distinct ARRAY_TO_STRING(regions.eez, ",") as eez,
-floor(lat*4) lat_bin,
-floor(lon*4) lon_bin,
-from
-`world-fishing-827.gfw_research.pipe_v20201001`
-where _partitiontime between timestamp("2019-08-01")
-and timestamp("2020-01-31")
-),
-
-eez_name as (
-select cast(eez_id as string) as eez,
-reporting_name
-from gfw_research.eez_info),
-
-eez_join as (
-select * from eezs
-left join eez_name
-using(eez)
-)
-select * from (
-select * except(ssvid),
-if(manual_adj_ssvid is null, ssvid, cast(manual_adj_ssvid as string)) as ssvid,
-ssvid is not null or manual_adj_ssvid is not null as matched,
-floor(lat*4) lat_bin,
-floor(lon*4) lon_bin,
-from
-proj_walmart_dark_targets.walmart_ksat_detections_ind_v20200110
-left join
-ksat_matched
-on detect_id = DetectionId
-left join
-vessels
-using(ssvid)
-left join `world-fishing-827.proj_walmart_dark_targets.manual_matches_ind_v20200406`
-using(DetectionId))
-left join eez_join
-using(lat_bin, lon_bin)
-
-"""
-md_df_detects = sarm.gbq(q)
-
+df_detects = pd.read_gbq(q)
 
 # %%
-# French Polynesia Detections and matches including manually identified
-s = """
-with ksat_matched as
-(SELECT ssvid,
-detect_id
-FROM `world-fishing-827.proj_walmart_dark_targets.walmart_ksat_matches_top_nogear_fp_v20200117` ),
+fp_df_detects = df_detects[df_detects.region=='pacific']
+md_df_detects = df_detects[df_detects.region=='indian']
 
-vessels as
-(select best.best_vessel_class,
-on_fishing_list_best,
-best.best_length_m,
-registry_info.best_known_flag,
-ssvid from `gfw_research.vi_ssvid_v20210301`),
-
-eezs as (
-select
-distinct ARRAY_TO_STRING(regions.eez, ",") as eez,
-floor(lat*4) lat_bin,
-floor(lon*4) lon_bin,
-from
-`world-fishing-827.gfw_research.pipe_v20201001`
-where _partitiontime between timestamp("2019-08-01")
-and timestamp("2020-01-31")
-),
-
-eez_name as (
-select cast(eez_id as string) as eez,
-reporting_name
-from gfw_research.eez_info),
-
-eez_join as (
-select * from eezs
-left join eez_name
-using(eez)
-)
-
-select * from (
-select * except(ssvid),
-if(manual_adj_ssvid is null, ssvid, cast(manual_adj_ssvid as string)) as ssvid,
-ssvid is not null or manual_adj_ssvid is not null as matched ,
-floor(lat*4) lat_bin,
-floor(lon*4) lon_bin,
-from
-proj_walmart_dark_targets.walmart_ksat_detections_fp_v20200117
-left join
-ksat_matched
-on detect_id = DetectionId
-left join
-vessels
-using(ssvid)
-left join `world-fishing-827.proj_walmart_dark_targets.manual_matches_fp_v20200406`
-using(DetectionId))
-left join eez_join
-using(lat_bin, lon_bin)
-
-"""
-fp_df_detects = sarm.gbq(s)
+# %%
 
 # %% [markdown]
 # ## Fig 1
@@ -331,6 +243,10 @@ heights = [ax1_dim_height, ax1_dim_height]
 widths = [ax1_dim_width, ax1_dim_width]
 
 # %%
+
+# %%
+
+# %%
 # Plot the figure
 
 # Setting up the figure and gridspec
@@ -346,6 +262,37 @@ fig1 = plt.figure(figsize=(fig_width, fig_height))
 fig1.set_facecolor("white")
 # USE the height ratio's parameter
 gs = fig1.add_gridspec(ncols=c, nrows=r, height_ratios=heights)
+
+
+# for figure 1
+def label_axes(fig, labels=None, loc=None, **kwargs):
+    """
+    Walks through axes and labels each.
+
+    kwargs are collected and passed to `annotate`
+
+    Parameters
+    ----------
+    fig : Figure
+         Figure object to work on
+
+    labels : iterable or None
+        iterable of strings to use to label the axes.
+        If None, lower case letters are used.
+
+    loc : len=2 tuple of floats
+        Where to put the label in axes-fraction units
+    """
+    if labels is None:
+        labels = string.ascii_lowercase
+
+    # re-use labels rather than stop labeling
+    labels = cycle(labels)
+    if loc is None:
+        loc = (0.9, 0.9)
+    for ax, lab in zip(fig.axes, labels):
+        ax.annotate(lab, xy=loc, xycoords="axes fraction", **kwargs)
+
 
 with np.errstate(invalid="ignore", divide="ignore"):
 
@@ -544,7 +491,7 @@ with np.errstate(invalid="ignore", divide="ignore"):
 
         plt.subplots_adjust(wspace=-0.20, hspace=0.05, left=0, right=1, bottom=0, top=1)
 
-        sarm.label_axes(
+        label_axes(
             fig1,
             loc=(0.02, 0.92),
             labels=["b", "c", "d", "e"],
@@ -552,7 +499,7 @@ with np.errstate(invalid="ignore", divide="ignore"):
             fontweight="bold",
         )
 
-#         plt.savefig("Fig1.png",dpi=300,bbox_inches='tight')
+        plt.savefig("Fig1.png",dpi=300,bbox_inches='tight')
 
 # %%
 fig1 = plt.figure(figsize=(14, 7))
@@ -625,6 +572,6 @@ with pyseas.context(pyseas.styles.light):
         fontweight="bold",
     )
 
-#     plt.savefig("Fig1_1_worldpanel.png",dpi=300, bbox_inches='tight')
+    plt.savefig("Fig1_1_worldpanel.png",dpi=300, bbox_inches='tight')
 
 # %%

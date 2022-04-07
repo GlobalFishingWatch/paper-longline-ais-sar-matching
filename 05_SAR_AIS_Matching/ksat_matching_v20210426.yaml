@@ -1,8 +1,8 @@
 norad_id: 32382
 detections_table:
-    (select ProductStartTime,ProductStopTime,scene_id,footprint,lon,lat,DetectionID from proj_walmart_dark_targets.walmart_ksat_detections_fp_v20200117
+    (select ProductStartTime,ProductStopTime,scene_id,footprint,lon,lat,DetectionID from \`global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_fp_v20200117\`
     union all
-    select ProductStartTime,ProductStopTime,scene_id,footprint,lon,lat,DetectionID from proj_walmart_dark_targets.walmart_ksat_detections_ind_v20200110)
+    select ProductStartTime,ProductStopTime,scene_id,footprint,lon,lat,DetectionID from \`global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_ind_v20200110\`)
 vessel_info_table:
     select
         ssvid,
@@ -17,10 +17,10 @@ vessel_info_table:
         else 'other'
         end label,
         final_vessel_class = 'gear' is_gear
-        FROM proj_walmart_dark_targets.all_mmsi_vessel_class
+        FROM \`global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class\` 
 research_pipe: world-fishing-827.gfw_research.pipe_v20201001
 segs_table: world-fishing-827.gfw_research.pipe_v20201001_segs
-output_dataset: proj_walmart_dark_targets
+output_dataset: global-fishing-watch.paper_longline_ais_sar_matching
 version_name: matching_v20210421
 use_vms: False
 vms_tables: []

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import math
 import os
 import pickle
@@ -32,7 +33,6 @@ import shapely
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from matplotlib import colorbar, colors
-from pyseas import maps, styles
 from pyseas.contrib import plot_tracks
 from scipy.special import erfinv, gammaln
 from scipy.stats import binom, gaussian_kde, lognorm, poisson
@@ -169,7 +169,7 @@ def plot_track_speed(df):
     with a histogram of speed
     """
 
-    with pyseas.context(styles.light):
+    with pyseas.context(pyseas.styles.light):
         for i in df.ssvid.unique():
 
             d = df[df["ssvid"] == i]
@@ -321,7 +321,7 @@ def plot_track_speed_year(df):
     with a histogram of speed
     """
 
-    with pyseas.context(styles.light):
+    with pyseas.context(pyseas.styles.light):
         for ssvid in df.ssvid.unique():
 
             ssvid_df = df[df.ssvid == ssvid]
@@ -410,7 +410,7 @@ def plot_double_track_speed(df):
     Function to plot vessels track points colored by speed, with a histogram of speed
     """
 
-    with pyseas.context(styles.light):
+    with pyseas.context(pyseas.styles.light):
 
         for ssvid in df.ssvid.unique():
 
@@ -695,7 +695,7 @@ def plot_ssvid_scene(fig, ax1, ax2, ax3, ax4, ssvid, scene_id, df):
     ax3.add_artist(scalebar)
 
 
-## Helper Functions for quantile regression and getting results
+# # Helper Functions for quantile regression and getting results
 
 
 def fit_line(x, y, q=0.5):
@@ -1194,7 +1194,7 @@ def map_fraction(df, rate, max_value=30):
     fig = plt.figure(figsize=(14, 7))
     norm = mpcolors.Normalize(vmin=0, vmax=max_value)
     raster[raster == 0] = np.nan
-    with plt.rc_context(psm.styles.dark):
+    with plt.rc_context(pyseas.styles.dark):
         ax, im, cb = psm.plot_raster_w_colorbar(
             raster,
             r"images per cell ",

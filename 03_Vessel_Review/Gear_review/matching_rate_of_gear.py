@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -22,20 +22,20 @@
 #
 # Key finding:
 # It looks like gear almost never (<2%) matches to a sar detection if the gear is moving at under 1 knot. But the match rate increases if it is moving faster. Gear doesn't have a motor; when it is moving quickly it has to be on a vessel. Thus, we conclude that gear is almost never detected by radar and we can ignore it.
-
-import math
-import os
-from datetime import datetime, timedelta
-
-import cartopy
-import cartopy.crs as ccrs
-import cmocean
-import geopandas as gpd
-# # %matplotlib inline
-import matplotlib.pyplot as plt
-import numpy as np
+#
+# import math
+# import os
+# from datetime import datetime, timedelta
+#
+# import cartopy
+# import cartopy.crs as ccrs
+# import cmocean
+# import geopandas as gpd
+# %matplotlib inline
+# import matplotlib.pyplot as plt
+# import numpy as np
 # import pyseas.rasters
-import pandas as pd
+# import pandas as pd
 # %%
 import pyseas
 # import pyseas.colors
@@ -71,7 +71,7 @@ q = """with gear_in_scene as
 (select * from `world-fishing-827.scratch_david.interp_test`
 join
 (select distinct ssvid from
-`world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20201221` where  gear
+`global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20201221` where  gear
 and cast(ssvid as int64) not in (
 228368700 ,
 412549103, 416005715 ,
