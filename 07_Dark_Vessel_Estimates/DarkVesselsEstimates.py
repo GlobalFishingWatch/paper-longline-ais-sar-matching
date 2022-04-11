@@ -7,9 +7,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -132,13 +132,13 @@ SELECT
   within_footprint_5km,
   match_review
 FROM
-  `world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20210427`
+  `global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427`
 WHERE
   vessel_type not in ('gear','duplicate')
   OR detect_id IS not NULL
 """
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 # -
 
 # save here to access offline
@@ -949,5 +949,6 @@ for region, dark_vessels in zip(regions, dark_vessels_ranges):
             f"dark vessels: {dark}, dark fishing: {dark_fishing:.0f}, percent dark fishing: {per_df:.1f}%"
         )
 # -
+
 
 

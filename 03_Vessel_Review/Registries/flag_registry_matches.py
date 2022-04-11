@@ -23,7 +23,7 @@ gold = '#f8ba47'
 green = '#ebe55d'
 
 def gbq(q):
-    return pd.read_gbq(q, project_id = 'world-fishing-827')
+    return pd.read_gbq(q)
 
 
 # %% [markdown]

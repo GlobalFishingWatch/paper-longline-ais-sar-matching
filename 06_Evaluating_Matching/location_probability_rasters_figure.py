@@ -26,12 +26,15 @@ import ais_sar_matching.sar_analysis as sarm
 # %autoreload 2
 
 # %%
-q = """with detect_lat_lon as
-(select detect_id, detect_lon, detect_lat from `world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20210416` where detect_id is not null),
+q = """
+
+with detect_lat_lon as
+(select detect_id, detect_lon, detect_lat
+ from `global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427` where detect_id is not null),
 ave_scores as
-(select detect_id, ssvid, scene_id, score as score_ave, probability1, probability2 from `world-fishing-827.proj_walmart_dark_targets.matching_v20210421_2_scored` ),
+(select detect_id, ssvid, scene_id, score as score_ave, probability1, probability2 from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_2_scored` ),
 mult_scores as
-(select detect_id, ssvid, scene_id, score as score_mult from `world-fishing-827.proj_walmart_dark_targets.matching_v20210421_2_scored_mult` ),
+(select detect_id, ssvid, scene_id, score as score_mult from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_2_scored_mult` ),
 mult_and_ave_scores as
 (select * from ave_scores full outer join mult_scores using(ssvid, detect_id, scene_id)),
 extrapolated as
@@ -52,7 +55,7 @@ delta_minutes2,
 scale1,
 scale2,
 max_scale
-from `world-fishing-827.proj_walmart_dark_targets.matching_v20210421_1_extrapolated_ais` )
+from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_1_extrapolated_ais` )
 select
 scene_id,
 ssvid, label,
@@ -92,7 +95,8 @@ using(scene_id, ssvid)
 join
 detect_lat_lon
 using(detect_id)
-where ssvid in (select ssvid from `world-fishing-827.proj_walmart_dark_targets.all_mmsi_vessel_class` where final_vessel_class not in ("duplicate","gear"))
+where ssvid in (select ssvid from `global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427` 
+where vessel_type not in ("duplicate","gear"))
 order by score_ave desc
 """
 
@@ -142,7 +146,7 @@ speed_upper,
 minutes_lower,
 minutes_upper
 FROM
-`world-fishing-827.gfw_research_precursors.point_cloud_mirror_nozeroes_contour_v20190502`
+`global-fishing-watch.paper_longline_ais_sar_matching.point_cloud_mirror_nozeroes_contour_v20190502`
 where (5 between speed_lower and speed_upper
 and -45 between minutes_lower and minutes_upper)
 or (3 between speed_lower and speed_upper

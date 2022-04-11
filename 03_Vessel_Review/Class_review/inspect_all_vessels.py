@@ -18,9 +18,11 @@
 #
 # Feb 20, 2021
 #
-# It matters a lot which vessels are gear and which are not for our analysis -- so we have to inspect all the vessels to make sure. Also, it woudl be good to know how many fishing vessels there actually are and how many drifting longlines.
+# It matters a lot which vessels are gear and which are not for our analysis -- so we have to inspect all the vessels to make sure. 
 #
-# Key findings: A number of mmsi vessel classes have been updated, and a
+# Key findings: A number of mmsi vessel classes have been updated, including identifying likely gear and reviewing the initial vessel classes.
+#
+# This notebook is part of the review. The below code won't run without access to the GFW project, but it shows how we reviewed many of the mmsi.
 
 import os
 

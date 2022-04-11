@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -48,14 +48,14 @@ import ais_sar_matching.sar_analysis as sarm
 # %autoreload 2
 # -
 
-score_ave_table = "proj_walmart_dark_targets.matching_v20210421_2_scored"
-score_mult_table = "proj_walmart_dark_targets.matching_v20210421_2_scored_mult"
-score_dist_table = "proj_walmart_dark_targets.matching_v20210421_2_scored_dist"
+score_ave_table = "paper_longline_ais_sar_matching.matching_v20210421_2_scored"
+score_mult_table = "paper_longline_ais_sar_matching.matching_v20210421_2_scored_mult"
+score_dist_table = "paper_longline_ais_sar_matching.matching_v20210421_2_scored_dist"
 detects_reviewed_table = (
-    "world-fishing-827.proj_walmart_dark_targets.detections_reviewed_v20210427"
+    "paper_longline_ais_sar_matching.detections_reviewed_v20210427"
 )
-score_combined_table = "proj_walmart_dark_targets.matching_v20210421_2_scored_combined"
-matches_top_table = "proj_walmart_dark_targets.matching_v20210421_4_matched_combined"
+score_combined_table = "paper_longline_ais_sar_matching.matching_v20210421_2_scored_combined"
+matches_top_table = "paper_longline_ais_sar_matching.matching_v20210421_4_matched_combined"
 
 q = f"""
 
@@ -68,14 +68,14 @@ a.detect_id detect_id, a.score score_ave, b.score score_mult, c.score as score_d
 
 
 a.ssvid in
-(select ssvid from `world-fishing-827.proj_walmart_dark_targets.all_mmsi_vessel_class`
+(select ssvid from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class`
 where final_vessel_class  in ('duplicate','gear') ) as gear_or_duplicate
-from `world-fishing-827.{score_ave_table}` a
+from `global-fishing-watch.{score_ave_table}` a
 join
-`world-fishing-827.{score_mult_table}` b
+`global-fishing-watch.{score_mult_table}` b
 on a.ssvid = b.ssvid and a.detect_id = b.detect_id
 left join
-{score_dist_table} c
+`global-fishing-watch.{score_dist_table}` c
 on a.ssvid = c.ssvid and a.detect_id = c.detect_id
 ),
 
@@ -86,9 +86,10 @@ reviewed_table as
 if( b.ssvid is null , "help",  match_category) as match_category
 
 from
-(select detect_id,  ssvid from {matches_top_table} where score > 0) a
+(select detect_id,  ssvid from
+  `global-fishing-watch.{matches_top_table}` where score > 0) a
 left join
-{detects_reviewed_table} b
+`global-fishing-watch.{detects_reviewed_table}` b
 using(detect_id, ssvid)
 )
 
@@ -100,7 +101,7 @@ gear_or_duplicate,match_category,min_delta_min
 from ave_mult a
 left join
 (select ssvid, score as score_combined, detect_id
-from {score_combined_table} ) b
+from `global-fishing-watch.{score_combined_table}` ) b
 using(ssvid,detect_id)
 left join
 reviewed_table
@@ -525,3 +526,6 @@ ax2.plot([-11, 3], [-11, 3], color=navy)
 paper_fig.subplots_adjust(hspace=0.4, wspace=0.4)
 plt.show()
 # paper_fig.savefig('scores_analysis.png', dpi=300, bbox_inches='tight')
+# -
+
+

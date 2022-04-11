@@ -186,7 +186,14 @@ is_drifting_longline,
 on_fishing_list_best
 """
 
+# this queries GFW's proprietary datasets
 df_ais = pd.read_gbq(q)
+# save results to a public csv file
+df_ais.to_csv("df_ais.csv")
+
+# %%
+# in the folder this csv is zipped -- unzip to read it
+df_ais = pd.read_csv("df_ais.csv")
 
 # %%
 # Create longline fishing raster for plotting
