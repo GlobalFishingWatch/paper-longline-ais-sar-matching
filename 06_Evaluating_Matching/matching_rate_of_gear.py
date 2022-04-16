@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -55,11 +55,11 @@ import ais_sar_matching.sar_analysis as sarm
 q = """with
 
 extrapolated_scenes as (
-select * from `world-fishing-827.proj_walmart_dark_targets.matching_v20210421_1_extrapolated_ais`
+select * from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_1_extrapolated_ais`
 ),
 
 scored_tables as (
-select * from `proj_walmart_dark_targets.matching_v20210421_2_scored_combined`),
+select * from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_2_scored_combined`),
 
 
 gear_in_scene as
@@ -68,7 +68,7 @@ gear_in_scene as
 extrapolated_scenes
 join
 (select distinct ssvid from
-`world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20210427` where  gear)
+`global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427` where  gear)
 using(ssvid)
 where within_footprint_5km
 and (delta_minutes1 < 1 or delta_minutes2 > -1)
@@ -86,7 +86,8 @@ scored_tables
 select ssvid, scene_id, ifnull(max_score,0) max_scores, speed1, speed2, delta_minutes1, delta_minutes2
  from gear_in_scene
 left join max_scores
-using(ssvid, scene_id)"""
+using(ssvid, scene_id)
+"""
 
 df = sarm.gbq(q)
 # -
@@ -248,33 +249,43 @@ len(df[df.max_scores < 1e-5]) / len(df)
 df[df.max_scores < 1e-3]
 
 # +
-q = """with gear_in_scene as
+q = """
+with
 
-(select * from `world-fishing-827.scratch_david.interp_test`
+extrapolated_scenes as (
+select * from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_1_extrapolated_ais`),
+
+scored_tables as (
+select * from `global-fishing-watch.paper_longline_ais_sar_matching.matching_v20210421_2_scored`),
+
+
+not_gear_in_scene as
+
+(select * from
+extrapolated_scenes
 join
 (select distinct ssvid from
-`world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20201221` where gear
-and cast(ssvid as int64) not in (
-228368700 ,
-412549103, 416005715 ,
-4168888 ,
-100900000  )
-)
+`global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427` where not gear and
+ssvid is not null)
 using(ssvid)
 where within_footprint_5km
+and (delta_minutes1 < 1 or delta_minutes2 > -1)
 ),
 
 max_scores as (
 select ssvid, scene_id, max(score) max_score from
-( select ssvid, scene_id, if(not is_single and a_probability = 0 or b_probability = 0, 0, score ) score from
-`world-fishing-827.scratch_david.score_test`) group by scene_id, ssvid
+( select ssvid, scene_id, score from
+scored_tables
+
+
+) group by scene_id, ssvid
 )
 
 select ssvid, scene_id, ifnull(max_score,0) max_scores, speed1, speed2, delta_minutes1, delta_minutes2
- from gear_in_scene
+ from not_gear_in_scene
 left join max_scores
 using(ssvid, scene_id)
-order by max_scores desc"""
+"""
 
 df = sarm.gbq(q)
 # -
@@ -327,6 +338,7 @@ plt.xlim(0, 10)
 plt.xlabel("speed of gear")
 plt.ylabel("fraction that were detected by radar")
 plt.title("When gear is detected, it is moving\nand thus likely on the deck of a boat")
+plt.show()
 
 d = df[df.dm < 10]
 len(d)
@@ -334,66 +346,3 @@ d["speed_floor"] = d.speed.apply(lambda x: int(x))
 d["detected"] = d.max_scores.apply(lambda x: x > 1e-5)
 d = d.groupby("speed_floor").count()
 d.head(10)
-
-# +
-q = """with gear_in_scene as
-
-(select * from `world-fishing-827.scratch_david.interp_test`
-join
-(select distinct ssvid from
-`world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20201221` where not gear)
-using(ssvid)
-where within_footprint_5km
-),
-
-max_scores as (
-select ssvid, scene_id, max(score) max_score from
-( select ssvid, scene_id, if(not is_single and a_probability = 0 or b_probability = 0, 0, score ) score from
-`world-fishing-827.scratch_david.score_test`) group by scene_id, ssvid
-)
-
-select ssvid, scene_id, ifnull(max_score,0) max_scores, speed1, speed2, delta_minutes1, delta_minutes2
- from gear_in_scene
-left join max_scores
-using(ssvid, scene_id)
-order by max_scores desc"""
-
-df = sarm.gbq(q)
-
-# +
-
-df = df.dropna()
-df["dm"] = df.apply(lambda x: min(x.delta_minutes1, abs(x.delta_minutes2)), axis=1)
-df["speed"] = df.apply(
-    lambda x: x.speed1 if x.delta_minutes1 < abs(x.delta_minutes2) else x.speed2, axis=1
-)
-d = df[df.dm < 10]
-len(d)
-d["speed_floor"] = d.speed.apply(lambda x: int(x))
-d["detected"] = d.max_scores.apply(lambda x: x > 1e-5)
-d = d.groupby("speed_floor").mean()
-d.head(10)
-# -
-
-plt.scatter(d.index + 0.5, d.detected)
-plt.xlim(0, 15)
-plt.xlabel("speed of vessel")
-plt.ylabel("fraction that were detected by radar")
-plt.title(
-    "things that are vessels match at the same rate regardless of speed\n\
-(although something weird is happening at 6 knots))"
-)
-
-# +
-d = df[df.dm < 10]
-len(d)
-d["speed_floor"] = d.speed.apply(lambda x: int(x))
-d["detected"] = d.max_scores.apply(lambda x: x > 1e-5)
-d = d.groupby("speed_floor").count()
-
-plt.scatter(d.index + 0.5, d.detected)
-plt.xlim(0, 15)
-plt.xlabel("speed of vessel")
-plt.ylabel("number")
-plt.title("vessels by speed")
-# -

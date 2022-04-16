@@ -6,24 +6,24 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
 
 # %% [markdown]
 # # This notebook includes the analysis to determine the number of scenes required to x percent of longline activity, and the code to generate figure 5
-
+#
 # %matplotlib inline
-import os
-
-import cartopy
-import matplotlib as mpl
-import matplotlib.colors as mpcolors
-import matplotlib.pyplot as plt
-import matplotlib.ticker as tkr
+# import os
+#
+# import cartopy
+# import matplotlib as mpl
+# import matplotlib.colors as mpcolors
+# import matplotlib.pyplot as plt
+# import matplotlib.ticker as tkr
 # %%
 import numpy as np
 import pandas as pd
@@ -31,6 +31,10 @@ import pyseas.cm
 import pyseas.contrib as psc
 import pyseas.maps as psm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import matplotlib.colors as mpcolors
+import cartopy
 
 mpl.rcParams["axes.spines.right"] = False
 mpl.rcParams["axes.spines.top"] = False
@@ -60,7 +64,7 @@ group by lat_index, lon_index,week
 order by fishing_hours desc
 """
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 # %%
 len(df)
@@ -300,7 +304,7 @@ ax2 = fig6.add_subplot(spec6[3:, 1:5])
 ax2.plot(df.index, df.fishing_sum, linewidth=4)
 ax2.set_xlabel("Number of images needed", size=24, labelpad=10)
 ax2.set_ylabel("Fraction of\n longline activity", size=24, labelpad=15)
-ax2.xaxis.set_major_formatter(tkr.FuncFormatter(lambda y, p: format(int(y), ",")))
+ax2.xaxis.set_major_formatter(mpl.ticker.FuncFormatter(lambda y, p: format(int(y), ",")))
 # start, end = ax2.get_xlim()
 # ax2.xaxis.set_ticks(np.arange(0, end, 5000))
 ax2.plot([3820, 3820], [0, 0.5], "--", c="dimgray")
@@ -317,3 +321,5 @@ plt.text(
 
 fig6.set_facecolor("white")
 # fig6.savefig("Fig6.png",dpi=300,bbox_inches='tight')
+
+# %%

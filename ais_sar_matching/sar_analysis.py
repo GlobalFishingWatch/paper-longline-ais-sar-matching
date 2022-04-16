@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import math
 import os
 import pickle
@@ -10,9 +11,16 @@ import matplotlib.colors as mcol
 import matplotlib.colors as mpcolors
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
+from matplotlib.ticker import FormatStrFormatter
+from matplotlib_scalebar.scalebar import ScaleBar
+import matplotlib.font_manager as fm
 import numpy as np
 import pandas as pd
-import proplot as pplt
+
+# import proplot as pplt
+
 import pyseas
 import pyseas.cm
 import pyseas.contrib as psc
@@ -25,12 +33,12 @@ import shapely
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from matplotlib import colorbar, colors
-from pyseas import maps, styles
 from pyseas.contrib import plot_tracks
 from scipy.special import erfinv, gammaln
 from scipy.stats import binom, gaussian_kde, lognorm, poisson
 from shapely import wkt
 from sklearn.linear_model import LinearRegression
+from itertools import cycle
 
 
 def gbq(q):
@@ -161,7 +169,7 @@ def plot_track_speed(df):
     with a histogram of speed
     """
 
-    with pyseas.context(styles.light):
+    with pyseas.context(pyseas.styles.light):
         for i in df.ssvid.unique():
 
             d = df[df["ssvid"] == i]
@@ -307,13 +315,13 @@ def calculate_residuals(model, features, label):
     return df_results
 
 
-def plot_track_speed(df):
+def plot_track_speed_year(df):
     """
     Function to plot vessels track points colored by speed,
     with a histogram of speed
     """
 
-    with pyseas.context(styles.light):
+    with pyseas.context(pyseas.styles.light):
         for ssvid in df.ssvid.unique():
 
             ssvid_df = df[df.ssvid == ssvid]
@@ -402,7 +410,7 @@ def plot_double_track_speed(df):
     Function to plot vessels track points colored by speed, with a histogram of speed
     """
 
-    with pyseas.context(styles.light):
+    with pyseas.context(pyseas.styles.light):
 
         for ssvid in df.ssvid.unique():
 
@@ -496,7 +504,7 @@ def plot_double_track_speed(df):
             print("\n")
 
 
-def plot_ssvid_scene(ax1, ax2, ax3, ax4, ssvid, scene_id, df):
+def plot_ssvid_scene(fig, ax1, ax2, ax3, ax4, ssvid, scene_id, df):
     plt.rcParams["axes.grid"] = False
     di = df[(df.ssvid == ssvid) & (df.scene_id == scene_id)]
 
@@ -666,7 +674,7 @@ def plot_ssvid_scene(ax1, ax2, ax3, ax4, ssvid, scene_id, df):
 
     divider = make_axes_locatable(ax3)
     cax = divider.append_axes("right", size="5%", pad=0.05)
-    cbar = fig2.colorbar(
+    cbar = fig.colorbar(
         im, cax=cax, orientation="vertical", fraction=0.15, aspect=40, pad=0.04
     )
 
@@ -687,7 +695,7 @@ def plot_ssvid_scene(ax1, ax2, ax3, ax4, ssvid, scene_id, df):
     ax3.add_artist(scalebar)
 
 
-## Helper Functions for quantile regression and getting results
+# # Helper Functions for quantile regression and getting results
 
 
 def fit_line(x, y, q=0.5):
@@ -1186,7 +1194,7 @@ def map_fraction(df, rate, max_value=30):
     fig = plt.figure(figsize=(14, 7))
     norm = mpcolors.Normalize(vmin=0, vmax=max_value)
     raster[raster == 0] = np.nan
-    with plt.rc_context(psm.styles.dark):
+    with plt.rc_context(pyseas.styles.dark):
         ax, im, cb = psm.plot_raster_w_colorbar(
             raster,
             r"images per cell ",

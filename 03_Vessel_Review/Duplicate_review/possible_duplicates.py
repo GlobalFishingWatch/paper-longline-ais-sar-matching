@@ -6,13 +6,21 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
 
+# %% [markdown]
+# # Review possible duplicates
+#
+# This notebook contains code used to identify when a vessel might be using two AIS devices, and thus be broadcating two sets of postions with different MMSI at the same time.
+#
+# The queries access GFW's non-public AIS data.
+
+# %%
 import math
 # %matplotlib inline
 import os
@@ -37,9 +45,9 @@ q = """with
 
 
 AOI as (
-SELECT distinct 'indian' as region,  footprint as footprint from  `world-fishing-827.proj_walmart_dark_targets.walmart_ksat_detections_ind_v20200110`
+SELECT distinct 'indian' as region,  footprint as footprint from  `global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_ind_v20200110`
 union all
-select distinct 'pacific' as region,  footprint as footprint from `world-fishing-827.proj_walmart_dark_targets.walmart_ksat_detections_fp_v20200117`
+select distinct 'pacific' as region,  footprint as footprint from `global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_fp_v20200117`
 ),
 footprints as (
 select ST_UNION_AGG(ST_GEOGFROMTEXT(footprint)) footprint
@@ -51,7 +59,7 @@ base_table as(
 SELECT a.lat, a.lon, ssvid, vessel_type, hour, _partitiontime date,   distance_from_port_m
   FROM `world-fishing-827.gfw_research_precursors.ais_positions_byssvid_hourly_v20191118` a
 join
-(select ssvid, vessel_type from `proj_walmart_dark_targets.all_detections_and_ais_v20210409`
+(select ssvid, vessel_type from `global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20210427`
 where not gear)
 using(ssvid)
 left join

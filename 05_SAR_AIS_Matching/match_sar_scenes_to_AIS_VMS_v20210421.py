@@ -28,7 +28,7 @@ import yaml
 
 
 def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
+    return pd.read_gbq(q)
 
 
 # this is a variable that can be changed to make different experiments
@@ -39,15 +39,14 @@ min_hours_to_scene = 0
 
 # %%
 
-
-def execute_commands_in_parallel(commands):
-    """This takes a list of commands and runs them in parallel,
-    16 at a time
-    """
-    with open("commands.txt", "w") as f:
-        f.write("\n".join(commands))
-    os.system("parallel -j 16 < commands.txt")
-    os.system("rm -f commands.txt")
+    
+    
+def replace_period_colon(table_id):
+    t = table_id.split(".")
+    if len(t)==3:
+        return f"{t[0]}:{t[1]}.{t[2]}"
+    else:
+        return table_id
 
 
 # %% [markdown]
@@ -101,7 +100,7 @@ cast(timestamp_diff(ProductStopTime, ProductStopTime,
 SECOND)/2 as int64) SECOND) detect_timestamp
 from ({detections_table})) """
 print(q)
-df = pd.read_gbq(q, project_id="world-fishing-827")
+df = pd.read_gbq(q)
 df.head()
 
 # %%
@@ -122,6 +121,8 @@ start_date, end_date
 
 # %% [markdown]
 # ## Update Satellite Table if Need Be
+#
+# Because the location of vessel detections can be offset due to the doppler shift, we have to know the position and velocity of the SAR satellites
 
 # %%
 for the_date in the_dates:
@@ -167,63 +168,19 @@ command = f"""jinja2  01_extrapolate_ais.sql.j2 \
    -D min_hours_to_scene="{min_hours_to_scene}" \
    -D detections_table="{detections_table}"  | \
    bq query --replace \
-   --destination_table={extrapolated_table}\
+   --destination_table={replace_period_colon(extrapolated_table)}\
    --allow_large_results --use_legacy_sql=false """
-
-# %%
-print(command)
 
 # %%
 os.system(command)
 
 # %% [markdown]
-# ## Score VMS Potential Matches
-
-# %%
-if use_vms:
-    commands = []
-
-    for vms_dataset, matches_scored_vms_table in zip(
-        vms_datasets, matches_scored_vms_tables
-    ):
-        matches_scored = matches_scored_vms_table
-
-        command = f"""jinja2  sar_to_vms.sql.j2   \
-           -D start_date="{start_date}" \
-           -D end_date="{end_date}" \
-           -D norad_id="{norad_id}" \
-           -D detections_table="{detections_table}"  \
-           -D vms_dataset="{vms_dataset}"| \
-           bq query --replace \
-           --destination_table={matches_scored}\
-           --allow_large_results --use_legacy_sql=false """
-        commands.append(command)
-
-
-# %%
-if use_vms:
-    print(commands[1])
-
-# %%
-if use_vms:
-    execute_commands_in_parallel(commands)
-
-# %% [markdown]
 # ## Score Detections
 
 # %%
-# matches_scored_vms_tables
-
-# %%
+# this is here because of a versin of this code that includes vms
 matches_scored_vms_tables_unioned = ""
 
-if use_vms:
-    for table in matches_scored_vms_tables:
-        matches_scored_vms_tables_unioned += "union all\
-        select concat(source,ssvid) as ssvid_source,* from {}  \
-        where score > .00001 ".format(
-            table
-        )
 
 command = f"""jinja2  02_score_detections.sql.j2 \
     -D extrapolated_table="{extrapolated_table}" \
@@ -231,7 +188,7 @@ command = f"""jinja2  02_score_detections.sql.j2 \
     -D vessel_info_table="{vessel_info_table}" \
     -D matches_scored_vms_tables="{matches_scored_vms_tables_unioned}"| \
     bq query --replace \
-    --destination_table={scored_ais_table} \
+    --destination_table={replace_period_colon(scored_ais_table)} \
     --allow_large_results --use_legacy_sql=false """
 
 # %%
@@ -249,15 +206,12 @@ os.system(command)
 command = f"""jinja2  03_rank_detections.sql.j2 \
     -D scored_table="{scored_ais_table}"| \
     bq query --replace \
-    --destination_table={ranked_table}\
+    --destination_table={replace_period_colon(ranked_table)}\
     --allow_large_results \
     --use_legacy_sql=false """
 
 # %%
 print(command)
-
-# %%
-# # !jinja2  03_rank_detections.sql.j2     -D scored_table="scratch_david.test_ksat_detections_v20210421_2_scored"
 
 # %%
 os.system(command)
@@ -272,7 +226,7 @@ command = f"""jinja2  04_match_detections.sql.j2 \
 -D ranked_table="{ranked_table}" \
 -D detections_table="{detections_table}"| \
 bq query --replace \
---destination_table={matched_table} \
+--destination_table={replace_period_colon(matched_table)} \
 --allow_large_results \
 --use_legacy_sql=false """
 
@@ -293,7 +247,7 @@ scored_multiplied_ais_table = scored_ais_table + "_mult"
 command = f"""jinja2  02_score_detections_multiplied.sql.j2 \
     -D extrapolated_table="{extrapolated_table}" | \
     bq query --replace \
-    --destination_table={scored_multiplied_ais_table} \
+    --destination_table={replace_period_colon(scored_multiplied_ais_table)} \
     --allow_large_results --use_legacy_sql=false """
 
 # %%
@@ -316,7 +270,7 @@ ranked_table_mult = ranked_table + "_mult"
 command = f"""jinja2  03_rank_detections.sql.j2 \
     -D scored_table="{scored_multiplied_ais_table}"| \
     bq query --replace \
-    --destination_table={ranked_table_mult}\
+    --destination_table={replace_period_colon(ranked_table_mult)}\
     --allow_large_results \
     --use_legacy_sql=false """
 
@@ -338,7 +292,7 @@ command = f"""jinja2  04_match_detections.sql.j2 \
 -D ranked_table="{ranked_table_mult}" \
 -D detections_table="{detections_table}"| \
 bq query --replace \
---destination_table={matched_table_mult} \
+--destination_table={replace_period_colon(matched_table_mult)} \
 --allow_large_results \
 --use_legacy_sql=false """
 
@@ -361,7 +315,7 @@ command = f"""jinja2  02_score_detections_dist.sql.j2 \
     -D extrapolated_table="{extrapolated_table}" \
     -D detections_table="{detections_table}"| \
     bq query --replace \
-    --destination_table={scored_dist_ais_table} \
+    --destination_table={replace_period_colon(scored_dist_ais_table)} \
     --allow_large_results --use_legacy_sql=false """
 
 # %%
@@ -384,7 +338,7 @@ ranked_table_dist = ranked_table + "_dist"
 command = f"""jinja2  03_rank_detections.sql.j2 \
     -D scored_table="{scored_dist_ais_table}"| \
     bq query --replace \
-    --destination_table={ranked_table_dist}\
+    --destination_table={replace_period_colon(ranked_table_dist)}\
     --allow_large_results \
     --use_legacy_sql=false """
 
@@ -407,7 +361,7 @@ command = f"""jinja2  04_match_detections.sql.j2 \
 -D ranked_table="{ranked_table_dist}" \
 -D detections_table="{detections_table}"| \
 bq query --replace \
---destination_table={matched_table_dist} \
+--destination_table={replace_period_colon(matched_table_dist)} \
 --allow_large_results \
 --use_legacy_sql=false """
 
@@ -440,7 +394,7 @@ command = f"""jinja2  02_score_combine_mult_ave.sql.j2 \
 -D scored_ais_table_mult="{scored_multiplied_ais_table}" \
 -D scored_ais_table="{scored_ais_table}"| \
 bq query --replace \
---destination_table={scored_table_combined} \
+--destination_table={replace_period_colon(scored_table_combined)} \
 --allow_large_results \
 --use_legacy_sql=false """
 
@@ -456,7 +410,7 @@ ranked_table_combined = ranked_table + "_combined"
 command = f"""jinja2  03_rank_detections.sql.j2 \
     -D scored_table="{scored_table_combined}"| \
     bq query --replace \
-    --destination_table={ranked_table_combined}\
+    --destination_table={replace_period_colon(ranked_table_combined)}\
     --allow_large_results \
     --use_legacy_sql=false """
 
@@ -473,9 +427,11 @@ command = f"""jinja2  04_match_detections.sql.j2 \
 -D ranked_table="{ranked_table_combined}" \
 -D detections_table="{detections_table}"| \
 bq query --replace \
---destination_table={matched_table_combined} \
+--destination_table={replace_period_colon(matched_table_combined)} \
 --allow_large_results \
 --use_legacy_sql=false """
 
 # %%
 os.system(command)
+
+# %%

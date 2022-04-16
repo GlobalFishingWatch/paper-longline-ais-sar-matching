@@ -7,9 +7,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.6.0
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -18,9 +18,11 @@
 #
 # Feb 20, 2021
 #
-# It matters a lot which vessels are gear and which are not for our analysis -- so we have to inspect all the vessels to make sure. Also, it woudl be good to know how many fishing vessels there actually are and how many drifting longlines.
+# It matters a lot which vessels are gear and which are not for our analysis -- so we have to inspect all the vessels to make sure. 
 #
-# Key findings: A number of mmsi vessel classes have been updated, and a
+# Key findings: A number of mmsi vessel classes have been updated, including identifying likely gear and reviewing the initial vessel classes.
+#
+# This notebook is part of the review. The below code won't run without access to the GFW project, but it shows how we reviewed many of the mmsi.
 
 import os
 
@@ -64,7 +66,7 @@ good_segs
 using(seg_id)
 where ssvid not  in (
 select ssvid from
-`world-fishing-827.proj_walmart_dark_targets.all_mmsi_vessel_class`
+`global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class`
 where final_vessel_class = 'gear' )
 
 
@@ -81,6 +83,8 @@ df_i = sarm.gbq(q)
 # -
 
 df = df.merge(df_i, on="ssvid", how="left").fillna("None")
+
+df
 
 sarm.plot_track_speed(df)
 
@@ -491,11 +495,8 @@ AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
 
 AOI_tracks.head()
 
-416002477
-
 AOI_tracks.ssvid.nunique()
 
-AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
 sarm.plot_track_speed(AOI_tracks)
 
 # +
@@ -580,12 +581,12 @@ all_footprints as (
 select
   footprint
 from
-  proj_walmart_dark_targets.walmart_ksat_detections_fp_v20200117
+  `global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_fp_v20200117`
  union all
  select
    footprint
  from
-   proj_walmart_dark_targets.walmart_ksat_detections_ind_v20200110
+   `global-fishing-watch.paper_longline_ais_sar_matching.ksat_detections_ind_v20200110`
 )
 select
   ssvid,
@@ -686,13 +687,10 @@ final_class_list = (
 )
 
 # +
-# final_class_list.to_gbq('scratch_pete.walmart_darkTargets_ssvid_Class_final', project_id='world-fishing-827', if_exists='replace')
-
-# +
 final = """with
 
 old_gear as (select ssvid, 'gear' as final_vessel_class
-from `world-fishing-827.proj_walmart_dark_targets.all_detections_and_ais_v20201221`
+from `global-fishing-watch.paper_longline_ais_sar_matching.all_detections_and_ais_v20201221`
 where gear
 and ssvid not in ('100900000',
 '228368700',
@@ -701,7 +699,7 @@ and ssvid not in ('100900000',
 '4168888'))
 
 select distinct * from (
-select * from proj_walmart_dark_targets.all_mmsi_vessel_class
+select * from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class`
 union all
 select * from old_gear)"""
 
@@ -710,15 +708,13 @@ f1 = sarm.gbq(final)
 
 len(f1)
 
-# +
-# f1.to_gbq('proj_walmart_dark_targets.all_mmsi_vessel_class', project_id='world-fishing-827', if_exists='replace')
-# -
+
 
 # # Vessels of Concern
 
 q = """select ssvid, best.best_vessel_class from `world-fishing-827.gfw_research.vi_ssvid_v20210301` where
 best.best_vessel_class != "gear" and ssvid in (
-select ssvid from proj_walmart_dark_targets.all_mmsi_vessel_class where final_vessel_class = 'gear')
+select ssvid from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class` where final_vessel_class = 'gear')
 """
 df_conern = sarm.gbq(q)
 
@@ -747,7 +743,7 @@ df_conern
 # '367753890':'passenger'
 #
 
-df = sarm.gbq("select * from proj_walmart_dark_targets.all_mmsi_vessel_class")
+df = sarm.gbq("select * from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class` ")
 df.head()
 
 df.at[df.ssvid == "985380200", "final_vessel_class"] = "passenger"
@@ -756,8 +752,12 @@ df.at[df.ssvid == "367753890", "final_vessel_class"] = "passenger"
 
 df[df.ssvid == "367753890"]
 
-df[["ssvid", "final_vessel_class"]].to_gbq(
-    "proj_walmart_dark_targets.all_mmsi_vessel_class",
-    project_id="world-fishing-827",
-    if_exists="replace",
-)
+# +
+# df[["ssvid", "final_vessel_class"]].to_gbq(
+#     "global-fishing-watch:paper_longline_ais_sar_matching.all_mmsi_vessel_class",
+#     project_id="world-fishing-827",
+#     if_exists="replace",
+# )
+# -
+
+
