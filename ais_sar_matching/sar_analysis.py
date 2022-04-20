@@ -18,6 +18,8 @@ from matplotlib_scalebar.scalebar import ScaleBar
 import matplotlib.font_manager as fm
 import numpy as np
 import pandas as pd
+# %matplotlib inline
+
 
 # import proplot as pplt
 
@@ -39,10 +41,6 @@ from scipy.stats import binom, gaussian_kde, lognorm, poisson
 from shapely import wkt
 from sklearn.linear_model import LinearRegression
 from itertools import cycle
-
-
-def gbq(q):
-    return pd.read_gbq(q, project_id="world-fishing-827")
 
 
 def get_footprint(detection_table):
@@ -163,93 +161,6 @@ def label_axes(fig, labels=None, loc=None, **kwargs):
         ax.annotate(lab, xy=loc, xycoords="axes fraction", **kwargs)
 
 
-def plot_track_speed(df):
-    """
-    Function to plot vessels track points colored by speed,
-    with a histogram of speed
-    """
-
-    with pyseas.context(pyseas.styles.light):
-        for i in df.ssvid.unique():
-
-            d = df[df["ssvid"] == i]
-
-            fig = plt.figure(
-                figsize=(10, 14),
-            )
-            gs = gridspec.GridSpec(ncols=1, nrows=3, figure=fig)
-            projinfo = plot_tracks.find_projection(df.lon, df.lat)
-
-            ax = maps.create_map(gs[0])
-            ax.set_global()
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            cm = plt.cm.get_cmap("RdYlBu_r")
-            z = np.array(d.speed_knots)
-
-            normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
-            zero = ax.scatter(
-                d.lon.values,
-                d.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar0 = plt.colorbar(zero)
-            cbar0.set_label("Speed", rotation=270)
-
-            ax1 = maps.create_map(
-                gs[1], projection=projinfo.projection, extent=projinfo.extent
-            )
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            one = ax1.scatter(
-                d.lon.values,
-                d.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar1 = plt.colorbar(one)
-            cbar1.set_label("Speed", rotation=270)
-
-            ax2 = fig.add_subplot(gs[2])
-
-            Q1 = np.quantile(d.speed_knots, 0.25)
-            Q3 = np.quantile(d.speed_knots, 0.75)
-            IQR = Q3 - Q1
-            df_noOutliers = d.speed_knots[
-                ~(
-                    (d.speed_knots < (Q1 - 1.5 * IQR))
-                    | (d.speed_knots > (Q3 + 1.5 * IQR))
-                )
-            ]
-
-            ax2.hist(d.speed_knots, bins="auto")
-            plt.xlabel("Speed")
-            plt.ylabel("Count")
-
-            print(i)
-            print(d.vessel_class.iloc[0])
-            print(d.ship_name.iloc[0])
-            plt.show()
-            print("\n")
-
-
 # normal distribution test
 # copied the following from
 # https://jeffmacaluso.github.io/post/LinearRegressionAssumptions/
@@ -315,202 +226,13 @@ def calculate_residuals(model, features, label):
     return df_results
 
 
-def plot_track_speed_year(df):
-    """
-    Function to plot vessels track points colored by speed,
-    with a histogram of speed
-    """
-
-    with pyseas.context(pyseas.styles.light):
-        for ssvid in df.ssvid.unique():
-
-            ssvid_df = df[df.ssvid == ssvid]
-
-            year = np.sort(ssvid_df.year.unique())
-
-            for i in year:
-                d = ssvid_df[ssvid_df["year"] == i]
-
-                fig = plt.figure(
-                    figsize=(10, 14),
-                )
-                gs = gridspec.GridSpec(ncols=1, nrows=3, figure=fig)
-                projinfo = plot_tracks.find_projection(df.lon, df.lat)
-
-                ax = maps.create_map(gs[0])
-                ax.set_global()
-                maps.add_land()
-                maps.add_countries()
-                maps.add_eezs()
-                maps.add_gridlines()
-                maps.add_gridlabels()
-
-                cm = plt.cm.get_cmap("RdYlBu_r")
-                z = np.array(d.speed_knots)
-
-                normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
-                zero = ax.scatter(
-                    d.lon.values,
-                    d.lat.values,
-                    c=z,
-                    cmap=cm,
-                    norm=normalize,
-                    alpha=0.7,
-                    transform=maps.identity,
-                )
-
-                cbar0 = plt.colorbar(zero)
-                cbar0.set_label("Speed", rotation=270)
-
-                ax1 = maps.create_map(
-                    gs[1], projection=projinfo.projection, extent=projinfo.extent
-                )
-                maps.add_land()
-                maps.add_countries()
-                maps.add_eezs()
-                maps.add_gridlines()
-                maps.add_gridlabels()
-
-                one = ax1.scatter(
-                    d.lon.values,
-                    d.lat.values,
-                    c=z,
-                    cmap=cm,
-                    norm=normalize,
-                    alpha=0.7,
-                    transform=maps.identity,
-                )
-
-                cbar1 = plt.colorbar(one)
-                cbar1.set_label("Speed", rotation=270)
-
-                ax2 = fig.add_subplot(gs[2])
-
-                Q1 = np.quantile(d.speed_knots, 0.25)
-                Q3 = np.quantile(d.speed_knots, 0.75)
-                IQR = Q3 - Q1
-                df_noOutliers = d.speed_knots[
-                    ~(
-                        (d.speed_knots < (Q1 - 1.5 * IQR))
-                        | (d.speed_knots > (Q3 + 1.5 * IQR))
-                    )
-                ]
-
-                ax2.hist(d.speed_knots, bins="auto")
-                plt.xlabel("Speed")
-                plt.ylabel("Count")
-
-                print(ssvid, i)
-                plt.show()
-                print("\n")
-
-
-def plot_double_track_speed(df):
-    """
-    Function to plot vessels track points colored by speed, with a histogram of speed
-    """
-
-    with pyseas.context(pyseas.styles.light):
-
-        for ssvid in df.ssvid.unique():
-
-            fig = plt.figure(figsize=(10, 14))
-            gs = gridspec.GridSpec(
-                ncols=1,
-                nrows=5,
-                width_ratios=[
-                    1,
-                ],
-                height_ratios=[3, 3, 1, 1, 1],
-            )
-            plt.style.use("seaborn-whitegrid")
-
-            ssvid_df = df[df["ssvid"] == ssvid]
-
-            projinfo = plot_tracks.find_projection(ssvid_df.lon, ssvid_df.lat)
-
-            ax = maps.create_map(gs[0])
-            ax.set_global()
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            cm = plt.cm.get_cmap("RdYlBu_r")
-            z = np.array(ssvid_df.speed_knots)
-
-            normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
-            zero = ax.scatter(
-                ssvid_df.lon.values,
-                ssvid_df.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-
-            cbar0 = plt.colorbar(zero)
-            cbar0.set_label("Speed", rotation=270)
-
-            ax1 = maps.create_map(
-                gs[1], projection=projinfo.projection, extent=projinfo.extent
-            )
-            maps.add_land()
-            maps.add_countries()
-            maps.add_eezs()
-            maps.add_gridlines()
-            maps.add_gridlabels()
-
-            one = ax1.scatter(
-                ssvid_df.lon.values,
-                ssvid_df.lat.values,
-                c=z,
-                cmap=cm,
-                norm=normalize,
-                alpha=0.7,
-                transform=maps.identity,
-            )
-            cbar1 = plt.colorbar(one)
-            cbar1.set_label("Speed", rotation=270)
-
-            one_sp = fig.add_subplot(gs[2])
-            one_sp.plot(ssvid_df["timestamp"], ssvid_df["lat"])
-            one_sp.set_ylabel("lat")
-
-            two_sp = fig.add_subplot(gs[3])
-            two_sp.plot(ssvid_df["timestamp"], ssvid_df["lon"])
-            two_sp.set_ylabel("lon")
-
-            ax2 = fig.add_subplot(gs[4])
-
-            Q1 = np.quantile(ssvid_df.speed_knots, 0.25)
-            Q3 = np.quantile(ssvid_df.speed_knots, 0.75)
-            IQR = Q3 - Q1
-            df_noOutliers = ssvid_df.speed_knots[
-                ~(
-                    (ssvid_df.speed_knots < (Q1 - 1.5 * IQR))
-                    | (ssvid_df.speed_knots > (Q3 + 1.5 * IQR))
-                )
-            ]
-
-            ax2.hist(ssvid_df.speed_knots, bins="auto")
-            plt.xlabel("Speed")
-            plt.ylabel("Count")
-
-            print(ssvid)
-            plt.show()
-            print("\n")
-
-
 def plot_ssvid_scene(fig, ax1, ax2, ax3, ax4, ssvid, scene_id, df):
     plt.rcParams["axes.grid"] = False
     di = df[(df.ssvid == ssvid) & (df.scene_id == scene_id)]
 
     q = f"""select * from proj_walmart_dark_targets.rasters_single
     where scene_id = '{scene_id}' and ssvid = '{ssvid}' """
-    df_r = gbq(q)
+    df_r = pd.read_gbq(q)
 
     the_max_lat = df_r.detect_lat.max()
     the_max_lon = df_r.detect_lon.max()
@@ -623,7 +345,7 @@ def plot_ssvid_scene(fig, ax1, ax2, ax3, ax4, ssvid, scene_id, df):
 
     # include multiplied raster
     q = f"""select * from proj_walmart_dark_targets.rasters_mult where ssvid = '{ssvid}' and scene_id = '{scene_id}' """
-    d = gbq(q)
+    d = pd.read_gbq(q)
 
     min_lon2 = d.detect_lon.min()
     min_lat2 = d.detect_lat.min()

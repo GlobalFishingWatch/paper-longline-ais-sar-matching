@@ -22,10 +22,6 @@ orange = '#f68d4b'
 gold = '#f8ba47'
 green = '#ebe55d'
 
-def gbq(q):
-    return pd.read_gbq(q)
-
-
 # %% [markdown]
 # ## IOTC + Taiwan registry matches. 
 
@@ -166,7 +162,7 @@ order by flag
 '''
 
 # %%
-iotc_df = gbq(iotc)
+iotc_df = pd.read_gbq(iotc)
 
 # %%
 iotc_df = iotc_df.fillna(0)
@@ -296,7 +292,7 @@ order by flag
 '''
 
 # %%
-wcpfc = gbq(wcpfc)
+wcpfc = pd.read_gbq(wcpfc)
 
 # %%
 wcpfc = wcpfc.fillna(0)
@@ -425,7 +421,7 @@ order by flag
 '''
 
 # %%
-iattc = gbq(iattc)
+iattc = pd.read_gbq(iattc)
 
 # %%
 iattc = iattc.fillna(0)
@@ -473,7 +469,7 @@ left join `world-fishing-827.gfw_research.eez_info`
 on (flag_state = territory1_iso3)
 order by region, vessel_count desc
 '''
-eez_count = gbq(q)
+eez_count = pd.read_gbq(q)
 
 # %%
 eez_count.head(50)
@@ -680,9 +676,11 @@ f4_ax4.xaxis.set_major_formatter(
         tkr.FuncFormatter(lambda y,  p: format(int(y), ',')))
 
 
-# fig4.savefig('fig4_horiz.png', dpi=300, bbox_inches='tight')
+fig4.savefig('fig4_horiz.png', dpi=300, bbox_inches='tight')
 
 plt.show()
 
+
+# %%
 
 # %%

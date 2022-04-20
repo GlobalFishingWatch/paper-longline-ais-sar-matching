@@ -100,7 +100,7 @@ where vessel_type not in ("duplicate","gear"))
 order by score_ave desc
 """
 
-df_info = sarm.gbq(q)
+df_info = pd.read_gbq(q)
 
 # %% [markdown]
 # ## Supplemental vessel location probability raster figures
@@ -158,7 +158,7 @@ and 60 between minutes_lower and minutes_upper)
 or (13 between speed_lower and speed_upper
 and 120 between minutes_lower and minutes_upper)
 """
-df2 = sarm.gbq(df_all)
+df2 = pd.read_gbq(df_all)
 
 # %%
 times = [-45, 15, 30, 60, 120]
@@ -290,5 +290,7 @@ for ax, col in zip(fig3_final.axes, cols):
 # %%
 fig3_final
 # fig3_final.savefig("Fig3.png",dpi=300,bbox_inches='tight')
+
+# %%
 
 # %%

@@ -7,9 +7,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.9.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -41,13 +41,199 @@ from pyseas import maps, styles
 # +
 from pyseas.contrib import plot_tracks
 
-import ais_sar_matching.sar_analysis as sarm
+# import ais_sar_matching.sar_analysis as sarm
 
 # %matplotlib inline
 
 # %load_ext autoreload
 # %autoreload 2
 # -
+
+def plot_track_speed(df):
+    """
+    Function to plot vessels track points colored by speed,
+    with a histogram of speed
+    """
+
+    with pyseas.context(pyseas.styles.light):
+        for i in df.ssvid.unique():
+
+            d = df[df["ssvid"] == i]
+
+            fig = plt.figure(
+                figsize=(10, 14),
+            )
+            gs = gridspec.GridSpec(ncols=1, nrows=3, figure=fig)
+            projinfo = plot_tracks.find_projection(df.lon, df.lat)
+
+            ax = maps.create_map(gs[0])
+            ax.set_global()
+            maps.add_land()
+            maps.add_countries()
+            maps.add_eezs()
+            maps.add_gridlines()
+            maps.add_gridlabels()
+
+            cm = plt.cm.get_cmap("RdYlBu_r")
+            z = np.array(d.speed_knots)
+
+            normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
+            zero = ax.scatter(
+                d.lon.values,
+                d.lat.values,
+                c=z,
+                cmap=cm,
+                norm=normalize,
+                alpha=0.7,
+                transform=maps.identity,
+            )
+
+            cbar0 = plt.colorbar(zero)
+            cbar0.set_label("Speed", rotation=270)
+
+            ax1 = maps.create_map(
+                gs[1], projection=projinfo.projection, extent=projinfo.extent
+            )
+            maps.add_land()
+            maps.add_countries()
+            maps.add_eezs()
+            maps.add_gridlines()
+            maps.add_gridlabels()
+
+            one = ax1.scatter(
+                d.lon.values,
+                d.lat.values,
+                c=z,
+                cmap=cm,
+                norm=normalize,
+                alpha=0.7,
+                transform=maps.identity,
+            )
+
+            cbar1 = plt.colorbar(one)
+            cbar1.set_label("Speed", rotation=270)
+
+            ax2 = fig.add_subplot(gs[2])
+
+            Q1 = np.quantile(d.speed_knots, 0.25)
+            Q3 = np.quantile(d.speed_knots, 0.75)
+            IQR = Q3 - Q1
+            df_noOutliers = d.speed_knots[
+                ~(
+                    (d.speed_knots < (Q1 - 1.5 * IQR))
+                    | (d.speed_knots > (Q3 + 1.5 * IQR))
+                )
+            ]
+
+            ax2.hist(d.speed_knots, bins="auto")
+            plt.xlabel("Speed")
+            plt.ylabel("Count")
+
+            print(i)
+            print(d.vessel_class.iloc[0])
+            print(d.ship_name.iloc[0])
+            plt.show()
+            print("\n")
+
+
+def plot_double_track_speed(df):
+    """
+    Function to plot vessels track points colored by speed, with a histogram of speed
+    """
+
+    with pyseas.context(pyseas.styles.light):
+
+        for ssvid in df.ssvid.unique():
+
+            fig = plt.figure(figsize=(10, 14))
+            gs = gridspec.GridSpec(
+                ncols=1,
+                nrows=5,
+                width_ratios=[
+                    1,
+                ],
+                height_ratios=[3, 3, 1, 1, 1],
+            )
+            plt.style.use("seaborn-whitegrid")
+
+            ssvid_df = df[df["ssvid"] == ssvid]
+
+            projinfo = plot_tracks.find_projection(ssvid_df.lon, ssvid_df.lat)
+
+            ax = maps.create_map(gs[0])
+            ax.set_global()
+            maps.add_land()
+            maps.add_countries()
+            maps.add_eezs()
+            maps.add_gridlines()
+            maps.add_gridlabels()
+
+            cm = plt.cm.get_cmap("RdYlBu_r")
+            z = np.array(ssvid_df.speed_knots)
+
+            normalize = mcol.Normalize(vmin=0, vmax=10, clip=True)
+            zero = ax.scatter(
+                ssvid_df.lon.values,
+                ssvid_df.lat.values,
+                c=z,
+                cmap=cm,
+                norm=normalize,
+                alpha=0.7,
+                transform=maps.identity,
+            )
+
+            cbar0 = plt.colorbar(zero)
+            cbar0.set_label("Speed", rotation=270)
+
+            ax1 = maps.create_map(
+                gs[1], projection=projinfo.projection, extent=projinfo.extent
+            )
+            maps.add_land()
+            maps.add_countries()
+            maps.add_eezs()
+            maps.add_gridlines()
+            maps.add_gridlabels()
+
+            one = ax1.scatter(
+                ssvid_df.lon.values,
+                ssvid_df.lat.values,
+                c=z,
+                cmap=cm,
+                norm=normalize,
+                alpha=0.7,
+                transform=maps.identity,
+            )
+            cbar1 = plt.colorbar(one)
+            cbar1.set_label("Speed", rotation=270)
+
+            one_sp = fig.add_subplot(gs[2])
+            one_sp.plot(ssvid_df["timestamp"], ssvid_df["lat"])
+            one_sp.set_ylabel("lat")
+
+            two_sp = fig.add_subplot(gs[3])
+            two_sp.plot(ssvid_df["timestamp"], ssvid_df["lon"])
+            two_sp.set_ylabel("lon")
+
+            ax2 = fig.add_subplot(gs[4])
+
+            Q1 = np.quantile(ssvid_df.speed_knots, 0.25)
+            Q3 = np.quantile(ssvid_df.speed_knots, 0.75)
+            IQR = Q3 - Q1
+            df_noOutliers = ssvid_df.speed_knots[
+                ~(
+                    (ssvid_df.speed_knots < (Q1 - 1.5 * IQR))
+                    | (ssvid_df.speed_knots > (Q3 + 1.5 * IQR))
+                )
+            ]
+
+            ax2.hist(ssvid_df.speed_knots, bins="auto")
+            plt.xlabel("Speed")
+            plt.ylabel("Count")
+
+            print(ssvid)
+            plt.show()
+            print("\n")
+
 
 # # Things that are Gear
 
@@ -72,21 +258,21 @@ where final_vessel_class = 'gear' )
 
 """
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 # +
 q = """select ssvid, ifnull(best.best_vessel_class, "none") vessel_class, ais_identity.shipname_mostcommon.value	as ship_name
 from `world-fishing-827.gfw_research.vi_ssvid_v20210202`
 where ssvid in (select distinct ssvid from proj_walmart_dark_targets.all_mmsi_positions)"""
 
-df_i = sarm.gbq(q)
+df_i = pd.read_gbq(q)
 # -
 
 df = df.merge(df_i, on="ssvid", how="left").fillna("None")
 
 df
 
-sarm.plot_track_speed(df)
+plot_track_speed(df)
 
 
 # Pete's Review
@@ -488,7 +674,7 @@ cross join
 
 """
 
-AOI_tracks = sarm.gbq(closer_look)
+AOI_tracks = pd.read_gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
@@ -497,7 +683,7 @@ AOI_tracks.head()
 
 AOI_tracks.ssvid.nunique()
 
-sarm.plot_track_speed(AOI_tracks)
+plot_track_speed(AOI_tracks)
 
 # +
 closer_look = """with good_segs as (
@@ -549,7 +735,7 @@ cross join
 
 """
 
-AOI_tracks = sarm.gbq(closer_look)
+AOI_tracks = pd.read_gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
@@ -605,7 +791,7 @@ cross join
 
 """
 
-AOI_tracks = sarm.gbq(closer_look)
+AOI_tracks = pd.read_gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
@@ -703,7 +889,7 @@ select * from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_ves
 union all
 select * from old_gear)"""
 
-f1 = sarm.gbq(final)
+f1 = pd.read_gbq(final)
 # -
 
 len(f1)
@@ -716,7 +902,7 @@ q = """select ssvid, best.best_vessel_class from `world-fishing-827.gfw_research
 best.best_vessel_class != "gear" and ssvid in (
 select ssvid from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class` where final_vessel_class = 'gear')
 """
-df_conern = sarm.gbq(q)
+df_conern = pd.read_gbq(q)
 
 df_conern
 
@@ -743,7 +929,7 @@ df_conern
 # '367753890':'passenger'
 #
 
-df = sarm.gbq("select * from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class` ")
+df = pd.read_gbq("select * from `global-fishing-watch.paper_longline_ais_sar_matching.all_mmsi_vessel_class` ")
 df.head()
 
 df.at[df.ssvid == "985380200", "final_vessel_class"] = "passenger"

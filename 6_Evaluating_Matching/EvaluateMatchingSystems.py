@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.9.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -41,8 +41,6 @@ navy = "#204280"
 orange = "#f68d4b"
 gold = "#f8ba47"
 green = "#ebe55d"
-
-import ais_sar_matching.sar_analysis as sarm
 
 # %load_ext autoreload
 # %autoreload 2
@@ -108,7 +106,7 @@ reviewed_table
 using(ssvid, detect_id)
 
 """
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 df.head()
 
@@ -527,5 +525,7 @@ paper_fig.subplots_adjust(hspace=0.4, wspace=0.4)
 plt.show()
 # paper_fig.savefig('scores_analysis.png', dpi=300, bbox_inches='tight')
 # -
+
+
 
 

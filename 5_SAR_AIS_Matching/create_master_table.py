@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.9.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -134,7 +134,7 @@ using(detect_id, ssvid)
 
 # print(q)
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 # %%
 df.head()
@@ -176,7 +176,7 @@ select * except(ISO_TER1, TERRITORY1),
  with_eez
  using(scene_id, ssvid, detect_id)"""
 
-df2 = sarm.gbq(q)
+df2 = pd.read_gbq(q)
 
 # %%
 df2.head()

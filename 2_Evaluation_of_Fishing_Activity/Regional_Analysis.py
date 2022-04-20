@@ -41,6 +41,7 @@ from itertools import cycle
 
 # psm.use(psm.styles.chart_style)
 
+# %matplotlib inline
 
 # %load_ext autoreload
 # %autoreload 2

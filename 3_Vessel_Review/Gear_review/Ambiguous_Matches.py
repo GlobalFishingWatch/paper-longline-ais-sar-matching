@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.9.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -37,7 +37,6 @@ from pyseas import maps, styles
 from pyseas.contrib import plot_tracks
 from datetime import date
 import matplotlib.pyplot as plt
-# import ais_sar_matching.sar_analysis as sarm
 import pandas as pd
 
 # %matplotlib inline

@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.9.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -45,8 +45,6 @@ navy = "#204280"
 orange = "#f68d4b"
 gold = "#f8ba47"
 green = "#ebe55d"
-
-import ais_sar_matching.sar_analysis as sarm
 
 # %load_ext autoreload
 # %autoreload 2
@@ -89,7 +87,7 @@ left join max_scores
 using(ssvid, scene_id)
 """
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 # -
 
 df.head()
@@ -178,7 +176,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_scores, speed1, speed2, delta_mi
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 # +
 
@@ -237,7 +235,7 @@ select ssvid, scene_id, ifnull(max_score,0) max_scores
 left join max_scores
 using(ssvid, scene_id)"""
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 # -
 
 df.head()
@@ -287,7 +285,7 @@ left join max_scores
 using(ssvid, scene_id)
 """
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 # -
 
 df = df.dropna()
@@ -346,3 +344,5 @@ d["speed_floor"] = d.speed.apply(lambda x: int(x))
 d["detected"] = d.max_scores.apply(lambda x: x > 1e-5)
 d = d.groupby("speed_floor").count()
 d.head(10)
+
+

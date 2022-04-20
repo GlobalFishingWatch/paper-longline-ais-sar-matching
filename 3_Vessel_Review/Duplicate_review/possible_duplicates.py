@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.13.0
+#       jupytext_version: 1.9.1
 #   kernelspec:
-#     display_name: Python 3 (ipykernel)
+#     display_name: Python 3
 #     language: python
 #     name: python3
 # ---
@@ -107,7 +107,7 @@ where a.ssvid = '416623000'
 and b.ssvid = '412685210'
 order by date, hour
 """
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 # %%
 df.head()
@@ -155,7 +155,7 @@ timestamp_diff(timestamp, last_timestamp, second) > 60
 
 order by timestamp"""
 
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 # %%
 df.head()
@@ -186,7 +186,7 @@ and seg_id in
 (select seg_id from `gfw_research.pipe_v20201001_segs` where good_seg and not overlapping_and_short)
 order by ssvid, timestamp
 """
-df = sarm.gbq(q)
+df = pd.read_gbq(q)
 
 
 # %%
