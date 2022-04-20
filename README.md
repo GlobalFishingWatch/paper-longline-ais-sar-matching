@@ -10,13 +10,12 @@ The data obtained from KSAT on SAR detections and scenes, and the code to proces
 
 ### 2_Evaluation_of_Fishing_Activity 
 A number of analyses of AIS data in the region
+ - Number and area of satellite footprints in each region
  - map of longline activity with areas of interst
  - analysis of fishing activity in these regions from AIS
- - bar charts showing activity by flag state in these regions
- - size distribution of vessels in each region
  
 ### 3_Vessel_Review
-We reviewed vessels to be sure of the vessel classification, and to make sure we were correclty classifying which MMSI were gear and which were not. This includes a good deal of manual reviews, and plotting of vessel tracks.
+We reviewed vessels to be sure of the vessel classification, and to make sure we were correctly classifying which MMSI were gear and which were not. This includes a good deal of manual reviews, and plotting of vessel tracks. In addition, we performed analysis to determine which flag states the vessels were from, what EEZs they were active in, and if they were matched to registries. 
 
 ### 4_Probability_Raster_Generation
  - Code that produces probability rasters 
