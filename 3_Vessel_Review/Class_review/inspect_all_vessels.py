@@ -41,8 +41,6 @@ from pyseas import maps, styles
 # +
 from pyseas.contrib import plot_tracks
 
-# import ais_sar_matching.sar_analysis as sarm
-
 # %matplotlib inline
 
 # %load_ext autoreload
@@ -739,7 +737,7 @@ AOI_tracks = pd.read_gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
-sarm.plot_track_speed(AOI_tracks)
+plot_track_speed(AOI_tracks)
 
 # +
 closer_look = """with good_segs as (
@@ -795,7 +793,7 @@ AOI_tracks = pd.read_gbq(closer_look)
 # -
 
 AOI_tracks = AOI_tracks.merge(df_i, on="ssvid", how="left").fillna("None")
-sarm.plot_track_speed(AOI_tracks)
+plot_track_speed(AOI_tracks)
 
 
 # +

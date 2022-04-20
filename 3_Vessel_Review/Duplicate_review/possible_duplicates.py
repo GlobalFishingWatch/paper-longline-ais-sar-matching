@@ -35,8 +35,6 @@ import pyseas.contrib as psc
 import pyseas.maps as psm
 import seaborn as sns
 
-import ais_sar_matching.sar_analysis as sarm
-
 # %load_ext autoreload
 # %autoreload 2
 

@@ -37,10 +37,6 @@ from shapely import wkt
 from six.moves import zip
 from itertools import cycle
 
-# import ais_sar_matching.sar_analysis as sarm
-
-# psm.use(psm.styles.chart_style)
-
 # %matplotlib inline
 
 # %load_ext autoreload
