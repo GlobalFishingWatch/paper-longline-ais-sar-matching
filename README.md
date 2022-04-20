@@ -38,3 +38,8 @@ Estimate the relationship between vessel size from GFW and SAR, and recall as a 
 
 ### 8_Area_of_Ocean_to_be_Monitored
 Using this technique, how much of the ocean could we monitor? This shows the amount of imagery needed to track 5%, 10%, 20% and 50% of the global pelagic longline fleet. We also estimate the same for for the area that is not covered by Sentinel-1 imagery.
+
+
+### Turning your repo into a module
+
+Run pip install -e . to install the module. This will create a folder titled <module>.egg-info that will allow you to access the code within your <module> folder from outside of that folder by doing import <module> without any need to use paths.
