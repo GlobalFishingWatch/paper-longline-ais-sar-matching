@@ -7,9 +7,9 @@
 #       extension: .py
 #       format_name: light
 #       format_version: '1.5'
-#       jupytext_version: 1.9.1
+#       jupytext_version: 1.13.0
 #   kernelspec:
-#     display_name: Python 3
+#     display_name: Python 3 (ipykernel)
 #     language: python
 #     name: python3
 # ---
@@ -25,7 +25,6 @@
 # This notebook is part of the review. The below code won't run without access to the GFW project, but it shows how we reviewed many of the mmsi.
 
 import os
-
 import matplotlib.cm as cm
 import matplotlib.colors as mcol
 import matplotlib.gridspec as gridspec
