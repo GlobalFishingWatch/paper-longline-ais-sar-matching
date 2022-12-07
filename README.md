@@ -1,5 +1,7 @@
 # paper-longline-ais-sar-matching
-A Repo for the paper `Revealing the Global Longline Fleet with SAR`. This paper is currently under review, although a preprint is available on EarthArXiv at https://eartharxiv.org/repository/view/3239/.
+A Repo for the paper `Revealing the Global Longline Fleet with satellite radar`.
+
+Kroodsma, D.A., Hochberg, T., Davis, P.B. et al. Revealing the global longline fleet with satellite radar. Sci Rep 12, 21004 (2022). https://doi.org/10.1038/s41598-022-23688-7
 
 Many of the scripts here access the public BigQuery dataset, `global-fishing-watch.paper_longline_ais_sar_matching`
 
